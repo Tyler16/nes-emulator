@@ -124,9 +124,11 @@ mod test {
     #[test]
     fn test_load() {
         let mut cpu: CPU = CPU::new();
-        cpu.load(vec![0x05, 0x00]);
+        cpu.load(vec![0xa9, 0x05, 0x00]);
         assert!(cpu.program_counter == 0x8000);
-        assert!(cpu.memory[cpu.program_counter as usize] == 0x05);
+        assert!(cpu.memory[cpu.program_counter as usize] == 0xa9);
+        assert!(cpu.memory[(cpu.program_counter + 1) as usize] == 0x05);
+        assert!(cpu.memory[(cpu.program_counter + 2) as usize] == 0x00);
     }
 
     #[test]
@@ -137,6 +139,21 @@ mod test {
         cpu.memory[0x8001 as usize] = 0x05;
         cpu.memory[0x8002 as usize] = 0x00;
         cpu.run();
+        assert_eq!(cpu.accumulator, 0x05);
+        assert_eq!(cpu.program_counter, 0x8003);
+        assert!(cpu.status & 0b0000_0010 == 0);
+        assert!(cpu.status & 0b1000_0000 == 0);
+        assert!(cpu.status & 0b0001_0000 == 0b0001_0000);
+    }
+
+    #[test]
+    fn test_load_and_run() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0xa9, 0x05, 0x00]);
+        assert!(cpu.program_counter == 0x8003);
+        assert!(cpu.memory[0x8000 as usize] == 0xa9);
+        assert!(cpu.memory[0x8001 as usize] == 0x05);
+        assert!(cpu.memory[0x8002 as usize] == 0x00);
         assert_eq!(cpu.accumulator, 0x05);
         assert!(cpu.status & 0b0000_0010 == 0);
         assert!(cpu.status & 0b1000_0000 == 0);
