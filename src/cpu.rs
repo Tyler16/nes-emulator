@@ -1,3 +1,21 @@
+const MEM_SIZE: usize = 0xFFFF;
+const PRG_START: u16 = 0x8000;
+
+// Flags
+const F_NEG: u8 = 0b1000_0000;
+const F_OVERFLOW: u8 = 0b0100_0000;
+const F_BRK: u8 = 0b0001_0000;
+const F_DEC: u8 = 0b0000_1000;
+const F_INT: u8 = 0b0000_0100;
+const F_ZERO: u8 = 0b0000_0010;
+const F_CARRY: u8 = 0b0000_0001;
+
+// Opcodes
+const TAX: u8 = 0xAA;
+const LDA: u8 = 0xA9;
+const INX: u8 = 0xE8;
+const BRK: u8 = 0x00;
+
 pub struct CPU {
     pub stack_ptr: u8,
     pub accumulator: u8,
@@ -5,7 +23,7 @@ pub struct CPU {
     pub register_y: u8,
     pub status: u8,
     pub program_counter: u16,
-    memory: [u8; 0xFFFF],
+    memory: [u8; MEM_SIZE],
 }
 
 impl CPU {
@@ -17,7 +35,7 @@ impl CPU {
             register_y: 0,
             status: 0,
             program_counter: 0,
-            memory: [0; 0xFFFF],
+            memory: [0; MEM_SIZE],
         }
     }
 
@@ -29,20 +47,28 @@ impl CPU {
         self.memory[addr as usize] = data;
     }
 
+    fn set_flag(&mut self, flag: u8) {
+        self.status = self.status | flag;
+    }
+    
+    fn unset_flag(&mut self, flag: u8) {
+        self.status = self.status & !flag;
+    }
+
     fn set_zero_and_neg_flags(&mut self, val: u8) {
         // Set 0 bit in status accordingly
         if val == 0 {
-            self.status = self.status | 0b0000_0010;
+            self.set_flag(F_ZERO);
         } else {
-            self.status = self.status & 0b1111_1101;
+            self.unset_flag(F_ZERO);
         }
 
         // Set negative bit in status accordingly
         if val & 0b1000_0000 != 0 {
-            self.status = self.status | 0b1000_0000;
+            self.set_flag(F_NEG);
         }
         else {
-            self.status = self.status & 0b0111_1111;
+            self.unset_flag(F_NEG);
         }
     }
 
@@ -77,21 +103,23 @@ impl CPU {
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
-        self.memory[0x8000 .. (0x8000 + program.len())].copy_from_slice(&program[..]);
-        self.program_counter = 0x8000;
+        self.memory[PRG_START as usize .. (PRG_START as usize + program.len())].copy_from_slice(&program[..]);
+        self.program_counter = PRG_START;
     }
 
     pub fn run(&mut self) {
         loop {
+            // Get current operation in program
             let opscode: u8 = self.mem_read(self.program_counter);
             self.program_counter += 1;
 
+            // Run corresponding operation function
             match opscode {
-                0xAA => self.tax(),
-                0xE8 => self.inx(),
-                0xA9 => self.lda(),
-                0x00 => { // BRK - end program
-                    self.status = self.status | 0b0001_0000;
+                TAX => self.tax(),
+                INX => self.inx(),
+                LDA => self.lda(),
+                BRK => { // BRK - end program
+                    self.status = self.status | F_BRK;
                     return;
                 },
                 _ => todo!(""),
