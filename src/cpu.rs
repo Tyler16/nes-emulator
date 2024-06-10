@@ -249,19 +249,11 @@ mod test {
         assert_eq!(cpu.accumulator, 0x05);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
-    }
 
-    #[test]
-    fn test_0xa9_lda_zero_flag() {
-        let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0x00, 0x00]);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
-    }
 
-    #[test]
-    fn test_0xa9_lda_neg_flag() {
-        let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0xff, 0x00]);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
@@ -274,19 +266,11 @@ mod test {
         assert_eq!(cpu.register_x, 0x05);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
-    }
 
-    #[test]
-    fn test_0xaa_tax_zero_flag() {
-        let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0, 0xAA, 0x00]);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
-    }
 
-    #[test]
-    fn test_0xaa_tax_neg_flag() {
-        let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0xff, 0xAA, 0x00]);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
@@ -299,22 +283,12 @@ mod test {
         assert_eq!(cpu.register_x, 0x01);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
-    }
-
-    #[test]
-    fn test_0xe8_inx_overflow() {
-        let mut cpu: CPU = CPU::new();
-        cpu.register_x = 0xff;
 
         cpu.load_and_run(vec![0xA9, 0xff, 0xAA, 0xE8, 0x00]);
         assert_eq!(cpu.register_x, 0);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
-    }
 
-    #[test]
-    fn test_0xe8_inx_negative() {
-        let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0x7F, 0xAA, 0xE8, 0x00]);
         assert_eq!(cpu.register_x, 0x80);
         assert!(cpu.status & F_ZERO == 0);
