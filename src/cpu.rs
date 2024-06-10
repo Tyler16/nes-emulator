@@ -11,12 +11,6 @@ const F_INT: u8 = 0b0000_0100;
 const F_ZERO: u8 = 0b0000_0010;
 const F_CARRY: u8 = 0b0000_0001;
 
-// Opcodes
-const TAX: u8 = 0xAA;
-const LDA: u8 = 0xA9;
-const INX: u8 = 0xE8;
-const BRK: u8 = 0x00;
-
 pub struct CPU {
     pub stack_ptr: u8,
     pub accumulator: u8,
@@ -139,10 +133,11 @@ impl CPU {
 
             // Run corresponding operation function
             match opscode {
-                TAX => self.tax(),
-                INX => self.inx(),
-                LDA => self.lda(),
-                BRK => { // BRK - end program
+                0xAA => self.tax(),
+                0xE8 => self.inx(),
+                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1
+                => self.lda(),
+                0x00 => { // BRK - end program
                     self.status = self.status | F_BRK;
                     return;
                 },
@@ -208,20 +203,20 @@ mod test {
     #[test]
     fn test_load() {
         let mut cpu: CPU = CPU::new();
-        cpu.load(vec![LDA, 0x05, BRK]);
+        cpu.load(vec![0xA9, 0x05, 0x00]);
         assert_eq!(cpu.mem_read_u16(PRG_REF), PRG_START);
-        assert_eq!(cpu.memory[PRG_START as usize], LDA);
+        assert_eq!(cpu.memory[PRG_START as usize], 0xA9);
         assert_eq!(cpu.memory[(PRG_START + 1) as usize], 0x05);
-        assert_eq!(cpu.memory[(PRG_START + 2) as usize], BRK);
+        assert_eq!(cpu.memory[(PRG_START + 2) as usize], 0x00);
     }
 
     #[test]
     fn test_run() {
         let mut cpu: CPU = CPU::new();
         cpu.program_counter = PRG_START;
-        cpu.memory[PRG_START as usize] = LDA;
+        cpu.memory[PRG_START as usize] = 0xA9;
         cpu.memory[(PRG_START + 1) as usize] = 0x05;
-        cpu.memory[(PRG_START + 2) as usize] = BRK;
+        cpu.memory[(PRG_START + 2) as usize] = 0x00;
         cpu.run();
         assert_eq!(cpu.accumulator, 0x05);
         assert_eq!(cpu.program_counter, PRG_START + 3);
@@ -230,11 +225,11 @@ mod test {
     #[test]
     fn test_load_and_run() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![LDA, 0x05, BRK]);
+        cpu.load_and_run(vec![0xA9, 0x05, 0x00]);
         assert!(cpu.program_counter == PRG_START + 3);
-        assert!(cpu.memory[PRG_START as usize] == LDA);
+        assert!(cpu.memory[PRG_START as usize] == 0xA9);
         assert!(cpu.memory[(PRG_START + 1) as usize] == 0x05);
-        assert!(cpu.memory[(PRG_START + 2) as usize] == BRK);
+        assert!(cpu.memory[(PRG_START + 2) as usize] == 0x00);
         assert_eq!(cpu.accumulator, 0x05);
         assert_eq!(cpu.register_x, 0);
         assert_eq!(cpu.register_y, 0);
@@ -243,14 +238,14 @@ mod test {
     #[test]
     fn test_0x00_brk_break_flag() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![BRK]);
+        cpu.load_and_run(vec![0x00]);
         assert!(cpu.status & F_BRK == F_BRK);
     }
 
     #[test]
     fn test_0xa9_lda_immediate_load_data() {
         let mut cpu = CPU::new();
-        cpu.load_and_run(vec![LDA, 0x05, BRK]);
+        cpu.load_and_run(vec![0xA9, 0x05, 0x00]);
         assert_eq!(cpu.accumulator, 0x05);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
@@ -259,7 +254,7 @@ mod test {
     #[test]
     fn test_0xa9_lda_zero_flag() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![LDA, 0x00, BRK]);
+        cpu.load_and_run(vec![0xA9, 0x00, 0x00]);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
     }
@@ -267,7 +262,7 @@ mod test {
     #[test]
     fn test_0xa9_lda_neg_flag() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![LDA, 0xff, BRK]);
+        cpu.load_and_run(vec![0xA9, 0xff, 0x00]);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
     }
@@ -275,7 +270,7 @@ mod test {
     #[test]
     fn test_0xaa_tax_load_data() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![LDA, 0x05, TAX, BRK]);
+        cpu.load_and_run(vec![0xA9, 0x05, 0xAA, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
@@ -284,7 +279,7 @@ mod test {
     #[test]
     fn test_0xaa_tax_zero_flag() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![LDA, 0, TAX, BRK]);
+        cpu.load_and_run(vec![0xA9, 0, 0xAA, 0x00]);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
     }
@@ -292,7 +287,7 @@ mod test {
     #[test]
     fn test_0xaa_tax_neg_flag() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![LDA, 0xff, TAX, BRK]);
+        cpu.load_and_run(vec![0xA9, 0xff, 0xAA, 0x00]);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
     }
@@ -300,7 +295,7 @@ mod test {
     #[test]
     fn test_0xe8_inx_increment() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![LDA, 0, TAX, INX, BRK]);
+        cpu.load_and_run(vec![0xA9, 0, 0xAA, 0xE8, 0x00]);
         assert_eq!(cpu.register_x, 0x01);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
@@ -311,7 +306,7 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.register_x = 0xff;
 
-        cpu.load_and_run(vec![LDA, 0xff, TAX, INX, BRK]);
+        cpu.load_and_run(vec![0xA9, 0xff, 0xAA, 0xE8, 0x00]);
         assert_eq!(cpu.register_x, 0);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
@@ -320,7 +315,7 @@ mod test {
     #[test]
     fn test_0xe8_inx_negative() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![LDA, 0x7F, TAX, INX, BRK]);
+        cpu.load_and_run(vec![0xA9, 0x7F, 0xAA, 0xE8, 0x00]);
         assert_eq!(cpu.register_x, 0x80);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
