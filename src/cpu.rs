@@ -41,7 +41,7 @@ impl CPU {
     }
 
     fn mem_read(&mut self, addr: u16) -> u8 {
-        return self.memory[addr as usize];
+        self.memory[addr as usize]
     }
 
     fn mem_read_u16(&mut self, addr: u16) -> u16 {
