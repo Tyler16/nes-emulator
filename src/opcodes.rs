@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use lazy_static;
 
 pub enum AddressingMode {
     Implicit,
+    Implied,
     Accumulator,
     Immediate,
     ZeroPage,
@@ -37,7 +39,7 @@ impl OpCode {
 }
 
 lazy_static! {
-    pub static ref OP_CODES: vec<OpCode> {
+    pub static ref OP_CODES: Vec<OpCode> = vec![
         OpCode::new(0x00, "BRK", 1, 7, AddressingMode::Implicit),
         OpCode::new(0xAA, "TAX", 1, 2, AddressingMode::Implied),
         OpCode::new(0xE8, "INX", 1, 2, AddressingMode::Implied),
@@ -50,7 +52,7 @@ lazy_static! {
         OpCode::new(0xB9, "LDA", 3, 4, AddressingMode::Absolute_Y),
         OpCode::new(0xA1, "LDA", 2, 6, AddressingMode::Indirect_X),
         OpCode::new(0xB1, "LDA", 2, 5, AddressingMode::Indirect_Y),
-    }
+    ];
 
     pub static ref OP_CODES_MAP: HashMap<u8, &'static OpCode> = {
         let mut map = HashMap::new();
@@ -58,5 +60,5 @@ lazy_static! {
             map.insert(op.code, op);
         }
         map
-    }
+    };
 }

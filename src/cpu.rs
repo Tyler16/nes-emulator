@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use crate::opcodes;
+use crate::opcodes::AddressingMode;
+
 const MEM_SIZE: usize = 0xFFFF;
 const PRG_REF: u16 = 0xFFFC;
 const PRG_START: u16 = 0x8000;
@@ -55,6 +59,10 @@ impl CPU {
         self.mem_write(addr + 1, high);
     }
 
+    fn get_operand_address(&mut self) {
+
+    }
+
     fn set_flag(&mut self, flag: u8) {
         self.status = self.status | flag;
     }
@@ -97,7 +105,7 @@ impl CPU {
         self.set_zero_and_neg_flags(self.accumulator);
     }
 
-    fn lda(&mut self) {
+    fn lda(&mut self, opcode: u8) {
         let param: u8 = self.mem_read(self.program_counter);
         self.program_counter += 1;
         self.accumulator = param;
@@ -128,15 +136,15 @@ impl CPU {
     pub fn run(&mut self) {
         loop {
             // Get current operation in program
-            let opscode: u8 = self.mem_read(self.program_counter);
+            let opcode: u8 = self.mem_read(self.program_counter);
             self.program_counter += 1;
 
             // Run corresponding operation function
-            match opscode {
+            match opcode {
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1
-                => self.lda(),
+                => self.lda(opcode),
                 0x00 => { // BRK - end program
                     self.status = self.status | F_BRK;
                     return;
