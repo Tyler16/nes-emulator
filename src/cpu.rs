@@ -59,8 +59,18 @@ impl CPU {
         self.mem_write(addr + 1, high);
     }
 
-    fn get_operand_address(&mut self) {
-
+    fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
+        match mode {
+            AddressingMode::Immediate => self.program_counter,
+            AddressingMode::ZeroPage => self.mem_read(self.program_counter) as u16,
+            AddressingMode::ZeroPage_X => (self.mem_read(self.program_counter) as u16 + self.register_x as u16) & 0x00FF,
+            AddressingMode::ZeroPage_Y => (self.mem_read(self.program_counter) as u16 + self.register_y as u16) & 0x00FF,
+            AddressingMode::Relative => self.program_counter + self.mem_read(self.program_counter) as u16,
+            AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
+            AddressingMode::Absolute_X => (self.mem_read_u16(self.program_counter) + self.register_x as u16),
+            AddressingMode::Absolute_Y => (self.mem_read_u16(self.program_counter) + self.register_x as u16),
+            _ => 0,
+        }
     }
 
     fn set_flag(&mut self, flag: u8) {
@@ -105,10 +115,12 @@ impl CPU {
         self.set_zero_and_neg_flags(self.accumulator);
     }
 
-    fn lda(&mut self, opcode: u8) {
+    fn lda(&mut self, opcode_val: u8) {
         let param: u8 = self.mem_read(self.program_counter);
         self.program_counter += 1;
         self.accumulator = param;
+        let opcode = opcodes::OP_CODES_MAP.get(&opcode_val);
+        let addr: u16 = self.get_operand_address(opcode.mode);
 
         self.set_zero_and_neg_flags(self.accumulator);
     }
