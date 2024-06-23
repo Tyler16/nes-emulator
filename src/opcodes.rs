@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use lazy_static;
 
+#[derive(Debug)]
+#[allow(non_camel_case_types)]
 pub enum AddressingMode {
     Implicit,
     Implied,
