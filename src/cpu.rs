@@ -26,6 +26,36 @@ pub struct CPU {
 }
 
 
+trait Mem {
+    fn mem_read(&mut self, addr: u16) -> u8;
+    fn mem_write(&mut self, addr: u16, data: u8);
+    
+    fn mem_read_u16(&mut self, addr: u16) -> u16 {
+        let low: u16 = self.mem_read(addr) as u16;
+        let high: u16 = self.mem_read(addr + 1) as u16;
+        return (high << 8) | low;
+    }
+
+    fn mem_write_u16(&mut self, addr: u16, data: u16) {
+        let high: u8 = (data >> 8) as u8;
+        let low: u8 = (data & 0xff) as u8;
+        self.mem_write(addr, low);
+        self.mem_write(addr + 1, high);
+    }
+}
+
+
+impl Mem for CPU {
+    fn mem_read(&mut self, addr: u16) -> u8 {
+        self.memory[addr as usize]
+    }
+
+    fn mem_write(&mut self, addr: u16, data: u8) {
+        self.memory[addr as usize] = data;
+    }
+}
+
+
 impl CPU {
 
     pub fn new() -> Self {
@@ -38,27 +68,6 @@ impl CPU {
             program_counter: 0,
             memory: [0; MEM_SIZE],
         }
-    }
-
-    fn mem_read(&mut self, addr: u16) -> u8 {
-        self.memory[addr as usize]
-    }
-
-    fn mem_write(&mut self, addr: u16, data: u8) {
-        self.memory[addr as usize] = data;
-    }
-
-    fn mem_read_u16(&mut self, addr: u16) -> u16 {
-        let low: u16 = self.mem_read(addr) as u16;
-        let high: u16 = self.mem_read(addr + 1) as u16;
-        return (high << 8) | low;
-    }
-
-    fn mem_write_u16(&mut self, addr: u16, data: u16) {
-        let high: u8 = (data >> 8) as u8;
-        let low: u8 = (data & 0xff) as u8;
-        self.mem_write(addr, low);
-        self.mem_write(addr + 1, high);
     }
 
     fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
@@ -176,9 +185,8 @@ impl CPU {
             match code {
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
-                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1
-                => self.lda(&opcode.mode),
-                0x00 => { // BRK - end program
+                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
+                0x00 => {
                     self.status = self.status | F_BRK;
                     return;
                 },
