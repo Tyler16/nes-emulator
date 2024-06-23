@@ -25,7 +25,9 @@ pub struct CPU {
     memory: [u8; MEM_SIZE],
 }
 
+
 impl CPU {
+
     pub fn new() -> Self {
         CPU {
             stack_ptr: 0,
@@ -42,14 +44,14 @@ impl CPU {
         self.memory[addr as usize]
     }
 
+    fn mem_write(&mut self, addr: u16, data: u8) {
+        self.memory[addr as usize] = data;
+    }
+
     fn mem_read_u16(&mut self, addr: u16) -> u16 {
         let low: u16 = self.mem_read(addr) as u16;
         let high: u16 = self.mem_read(addr + 1) as u16;
         return (high << 8) | low;
-    }
-
-    fn mem_write(&mut self, addr: u16, data: u8) {
-        self.memory[addr as usize] = data;
     }
 
     fn mem_write_u16(&mut self, addr: u16, data: u16) {
@@ -63,12 +65,31 @@ impl CPU {
         match mode {
             AddressingMode::Immediate => self.program_counter,
             AddressingMode::ZeroPage => self.mem_read(self.program_counter) as u16,
-            AddressingMode::ZeroPage_X => (self.mem_read(self.program_counter) as u16 + self.register_x as u16) & 0x00FF,
-            AddressingMode::ZeroPage_Y => (self.mem_read(self.program_counter) as u16 + self.register_y as u16) & 0x00FF,
-            AddressingMode::Relative => self.program_counter + self.mem_read(self.program_counter) as u16,
+            AddressingMode::ZeroPage_X => {
+                let base: u8 = self.mem_read(self.program_counter);
+                let addr: u16 = base.wrapping_add(self.register_x) as u16;
+                addr
+            },
+            AddressingMode::ZeroPage_Y => {
+                let base: u8 = self.mem_read(self.program_counter);
+                let addr: u16 = base.wrapping_add(self.register_y) as u16;
+                addr
+            },
             AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
-            AddressingMode::Absolute_X => (self.mem_read_u16(self.program_counter) + self.register_x as u16),
-            AddressingMode::Absolute_Y => (self.mem_read_u16(self.program_counter) + self.register_x as u16),
+            AddressingMode::Absolute_X => {
+                let base: u16 = self.mem_read_u16(self.program_counter);
+                let addr: u16 = base.wrapping_add(self.register_x as u16);
+                addr
+            },
+            AddressingMode::Absolute_Y => {
+                let base: u16 = self.mem_read_u16(self.program_counter);
+                let addr: u16 = base.wrapping_add(self.register_y as u16);
+                addr
+            },
+            AddressingMode::Indirect => {
+                let base: u16 = self.mem_read_u16(self.program_counter);
+                self.mem_read_u16(base)
+            },
             _ => 0,
         }
     }
@@ -82,14 +103,12 @@ impl CPU {
     }
 
     fn set_zero_and_neg_flags(&mut self, val: u8) {
-        // Set 0 bit in status accordingly
         if val == 0 {
             self.set_flag(F_ZERO);
         } else {
             self.unset_flag(F_ZERO);
         }
 
-        // Set negative bit in status accordingly
         if val & 0b1000_0000 != 0 {
             self.set_flag(F_NEG);
         }
@@ -115,12 +134,11 @@ impl CPU {
         self.set_zero_and_neg_flags(self.accumulator);
     }
 
-    fn lda(&mut self, opcode_val: u8) {
+    fn lda(&mut self, mode: &AddressingMode) {
         let param: u8 = self.mem_read(self.program_counter);
         self.program_counter += 1;
         self.accumulator = param;
-        let opcode = opcodes::OP_CODES_MAP.get(&opcode_val);
-        let addr: u16 = self.get_operand_address(opcode.mode);
+        let addr: u16 = self.get_operand_address(mode);
 
         self.set_zero_and_neg_flags(self.accumulator);
     }
@@ -146,17 +164,20 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
+        let ref opcodes: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
+
         loop {
             // Get current operation in program
-            let opcode: u8 = self.mem_read(self.program_counter);
+            let code: u8 = self.mem_read(self.program_counter);
             self.program_counter += 1;
+            let opcode: &&opcodes::OpCode = opcodes.get(&code).expect(&format!("OpCode {:x} is not recognized", code));
 
             // Run corresponding operation function
-            match opcode {
+            match code {
                 0xAA => self.tax(),
                 0xE8 => self.inx(),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1
-                => self.lda(opcode),
+                => self.lda(&opcode.mode),
                 0x00 => { // BRK - end program
                     self.status = self.status | F_BRK;
                     return;
@@ -180,14 +201,6 @@ mod test {
     }
 
     #[test]
-    fn test_read_memory_u16() {
-        let mut cpu: CPU = CPU::new();
-        cpu.memory[PRG_START as usize] = 0xAA;
-        cpu.memory[(PRG_START + 1) as usize] = 0x05;
-        assert_eq!(cpu.mem_read_u16(PRG_START), 0x05AA);
-    }
-
-    #[test]
     fn test_write_memory() {
         let mut cpu: CPU = CPU::new();
         cpu.mem_write(PRG_START, 0xA1);
@@ -197,11 +210,38 @@ mod test {
     }
 
     #[test]
+    fn test_read_memory_u16() {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[PRG_START as usize] = 0xAA;
+        cpu.memory[(PRG_START + 1) as usize] = 0x05;
+        assert_eq!(cpu.mem_read_u16(PRG_START), 0x05AA);
+    }
+
+    #[test]
     fn test_write_memory_u16() {
         let mut cpu: CPU = CPU::new();
         cpu.mem_write_u16(PRG_START, 0x0508);
         assert_eq!(cpu.memory[PRG_START as usize], 0x08);
         assert_eq!(cpu.memory[(PRG_START + 1) as usize], 0x05);
+    }
+
+    #[test]
+    fn test_set_flag() {
+        let mut cpu: CPU = CPU::new();
+        cpu.set_flag(F_CARRY);
+        assert_eq!(cpu.status, F_CARRY);
+        cpu.set_flag(F_BRK);
+        assert_eq!(cpu.status, F_CARRY | F_BRK);
+    }
+
+    #[test]
+    fn test_unset_flag() {
+        let mut cpu: CPU = CPU::new();
+        cpu.status = 0b1111_1111;
+        cpu.unset_flag(F_CARRY);
+        assert_eq!(cpu.status, !F_CARRY);
+        cpu.unset_flag(F_BRK);
+        assert_eq!(cpu.status, !(F_CARRY | F_BRK));
     }
 
     #[test]

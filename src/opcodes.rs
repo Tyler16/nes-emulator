@@ -39,7 +39,7 @@ impl OpCode {
 }
 
 lazy_static! {
-    pub static ref OP_CODES: Vec<OpCode> = vec![
+    pub static ref OPCODES: Vec<OpCode> = vec![
         OpCode::new(0x00, "BRK", 1, 7, AddressingMode::Implicit),
         OpCode::new(0xAA, "TAX", 1, 2, AddressingMode::Implied),
         OpCode::new(0xE8, "INX", 1, 2, AddressingMode::Implied),
@@ -54,9 +54,9 @@ lazy_static! {
         OpCode::new(0xB1, "LDA", 2, 5, AddressingMode::Indirect_Y),
     ];
 
-    pub static ref OP_CODES_MAP: HashMap<u8, &'static OpCode> = {
+    pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = {
         let mut map = HashMap::new();
-        for op in &*OP_CODES {
+        for op in &*OPCODES {
             map.insert(op.code, op);
         }
         map
