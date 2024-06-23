@@ -156,10 +156,8 @@ impl CPU {
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
-        let param: u8 = self.mem_read(self.program_counter);
-        self.program_counter += 1;
-        self.accumulator = param;
         let addr: u16 = self.get_operand_address(mode);
+        self.accumulator = self.mem_read(addr);
 
         self.set_zero_and_neg_flags(self.accumulator);
     }
@@ -191,6 +189,7 @@ impl CPU {
             // Get current operation in program
             let code: u8 = self.mem_read(self.program_counter);
             self.program_counter += 1;
+            let program_counter_state: u16 = self.program_counter;
             let opcode: &&opcodes::OpCode = opcodes.get(&code).expect(&format!("OpCode {:x} is not recognized", code));
 
             // Run corresponding operation function
@@ -203,6 +202,10 @@ impl CPU {
                     return;
                 },
                 _ => todo!(""),
+            }
+
+            if program_counter_state == self.program_counter {
+                self.program_counter += (opcode.len - 1) as u16;
             }
         }
     }
