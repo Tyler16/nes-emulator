@@ -567,19 +567,25 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
-        cpu.accumulator = 0x05;
-        cpu.memory[0x05] = 0x01;
+        let acc_val: u8 = 0x01;
+        let opperand: u8 = 0x02;
+        let expected: u8 = acc_val + opperand;
+        cpu.accumulator = acc_val;
+        cpu.memory[0x05] = opperand;
         cpu.load(vec![0x65, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x06);
+        assert_eq!(cpu.accumulator, expected);
 
+        let acc_val: u8 = 0x03;
+        let opperand: u8 = 0x04;
+        let expected: u8 = acc_val + opperand;
         cpu.reset();
-        cpu.accumulator = 0x02;
+        cpu.accumulator = acc_val;
         cpu.register_x = 0x01;
-        cpu.memory[0x06] = 0x02;
+        cpu.memory[0x06] = opperand;
         cpu.load(vec![0x75, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x04);
+        assert_eq!(cpu.accumulator, expected);
     }
 
     #[test]
@@ -588,27 +594,36 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
-        cpu.accumulator = 0x01;
-        cpu.memory[0x0505] = 0x02;
+        let acc_val: u8 = 0x01;
+        let opperand: u8 = 0x02;
+        let expected: u8 = acc_val + opperand;
+        cpu.accumulator = acc_val;
+        cpu.memory[0x0505] = opperand;
         cpu.load(vec![0x6D, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x03);
+        assert_eq!(cpu.accumulator, expected);
 
+        let acc_val: u8 = 0x03;
+        let opperand: u8 = 0x04;
+        let expected: u8 = acc_val + opperand;
         cpu.reset();
-        cpu.accumulator = 0x03;
-        cpu.memory[0x0506] = 0x04;
+        cpu.accumulator = acc_val;
+        cpu.memory[0x0506] = opperand;
         cpu.register_x = 0x01;
         cpu.load(vec![0x7D, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x07);
+        assert_eq!(cpu.accumulator, expected);
 
+        let acc_val: u8 = 0x05;
+        let opperand: u8 = 0x06;
+        let expected: u8 = acc_val + opperand;
         cpu.reset();
-        cpu.accumulator = 0x05;
-        cpu.memory[0x0507] = 0x06;
+        cpu.accumulator = acc_val;
+        cpu.memory[0x0507] = opperand;
         cpu.register_y = 0x02;
         cpu.load(vec![0x79, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x0B);
+        assert_eq!(cpu.accumulator, expected);
     }
 
     #[test]
@@ -617,24 +632,30 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
-        cpu.accumulator = 0x01;
+        let acc_val: u8 = 0x01;
+        let opperand: u8 = 0x02;
+        let expected: u8 = acc_val + opperand;
+        cpu.accumulator = acc_val;
         cpu.register_x = 0x01;
         cpu.memory[0x06] = 0x05;
         cpu.memory[0x07] = 0x05;
-        cpu.memory[0x0505] = 0x02;
+        cpu.memory[0x0505] = opperand;
         cpu.load(vec![0x61, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x03);
+        assert_eq!(cpu.accumulator, expected);
 
+        let acc_val: u8 = 0x03;
+        let opperand: u8 = 0x04;
+        let expected: u8 = acc_val + opperand;
         cpu.reset();
-        cpu.accumulator = 0x03;
+        cpu.accumulator = acc_val;
         cpu.register_y = 0x02;
         cpu.memory[0x10] = 0x06;
         cpu.memory[0x11] = 0x06;
-        cpu.memory[0x0608] = 0x04;
+        cpu.memory[0x0608] = opperand;
         cpu.load(vec![0x71, 0x10, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x07);
+        assert_eq!(cpu.accumulator, expected);
     }
 
     #[test]
@@ -671,19 +692,25 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
-        cpu.accumulator = 0b1100_0000;
-        cpu.memory[0x05] = 0b1010_0000;
+        let acc_val: u8 = 0b1100_0000;
+        let opperand: u8 = 0b1010_0000;
+        let expected: u8 = acc_val & opperand;
+        cpu.accumulator = acc_val;
+        cpu.memory[0x05] = opperand;
         cpu.load(vec![0x25, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0b1000_0000);
+        assert_eq!(cpu.accumulator, expected);
 
+        let acc_val: u8 = 0b0000_1100;
+        let opperand: u8 = 0b0000_1010;
+        let expected: u8 = acc_val & opperand;
         cpu.reset();
-        cpu.accumulator = 0b0000_1100;
+        cpu.accumulator = acc_val;
         cpu.register_x = 0x01;
-        cpu.memory[0x06] = 0b0000_1010;
+        cpu.memory[0x06] = opperand;
         cpu.load(vec![0x35, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0b0000_1000);
+        assert_eq!(cpu.accumulator, expected);
     }
 
     #[test]
@@ -692,27 +719,36 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
-        cpu.accumulator = 0b1010_0000;
-        cpu.memory[0x0505] = 0b1100_0000;
+        let acc_val: u8 = 0b1100_0000;
+        let opperand: u8 = 0b1010_0000;
+        let expected: u8 = acc_val & opperand;
+        cpu.accumulator = acc_val;
+        cpu.memory[0x0505] = opperand;
         cpu.load(vec![0x2D, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0b1000_0000);
+        assert_eq!(cpu.accumulator, expected);
 
+        let acc_val: u8 = 0b0000_1010;
+        let opperand: u8 = 0b0000_1100;
+        let expected: u8 = acc_val & opperand;
         cpu.reset();
-        cpu.accumulator = 0b0000_1010;
-        cpu.memory[0x0506] = 0b0000_1100;
+        cpu.accumulator = acc_val;
+        cpu.memory[0x0506] = opperand;
         cpu.register_x = 0x01;
         cpu.load(vec![0x3D, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0b0000_1000);
+        assert_eq!(cpu.accumulator, expected);
 
+        let acc_val: u8 = 0b0101_0000;
+        let opperand: u8 = 0b0110_0000;
+        let expected: u8 = acc_val & opperand;
         cpu.reset();
-        cpu.accumulator = 0b0101_0000;
-        cpu.memory[0x0507] = 0b0110_0000;
+        cpu.accumulator = acc_val;
+        cpu.memory[0x0507] = opperand;
         cpu.register_y = 0x02;
         cpu.load(vec![0x39, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0b0100_0000);
+        assert_eq!(cpu.accumulator, expected);
     }
 
     #[test]
@@ -721,24 +757,30 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
-        cpu.accumulator = 0b1010_0000;
+        let acc_val: u8 = 0b1010_0000;
+        let opperand: u8 = 0b1100_0000;
+        let expected: u8 = acc_val & opperand;
+        cpu.accumulator = acc_val;
         cpu.register_x = 0x01;
         cpu.memory[0x06] = 0x05;
         cpu.memory[0x07] = 0x05;
-        cpu.memory[0x0505] = 0b1100_0000;
+        cpu.memory[0x0505] = opperand;
         cpu.load(vec![0x21, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0b1000_0000);
+        assert_eq!(cpu.accumulator, expected);
 
+        let acc_val: u8 = 0b0000_1010;
+        let opperand: u8 = 0b0000_1100;
+        let expected: u8 = acc_val & opperand;
         cpu.reset();
-        cpu.accumulator = 0b0000_1010;
+        cpu.accumulator = acc_val;
         cpu.register_y = 0x02;
         cpu.memory[0x10] = 0x06;
         cpu.memory[0x11] = 0x06;
-        cpu.memory[0x0608] = 0b0000_1100;
+        cpu.memory[0x0608] = opperand;
         cpu.load(vec![0x31, 0x10, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0b0000_1000);
+        assert_eq!(cpu.accumulator, expected);
     }
 
     #[test]
@@ -798,17 +840,21 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
-        cpu.memory[0x05] = 0x01;
+        let opperand: u8 = 0x01;
+        let result: u8 = opperand;
+        cpu.memory[0x05] = opperand;
         cpu.load(vec![0xA5, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x01);
+        assert_eq!(cpu.accumulator, result);
 
+        let opperand: u8 = 0x02;
+        let result: u8 = opperand;
         cpu.reset();
-        cpu.memory[0x06] = 0x02;
+        cpu.memory[0x06] = opperand;
         cpu.register_x = 0x01;
         cpu.load(vec![0xB5, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x02);
+        assert_eq!(cpu.accumulator, result);
     }
 
     #[test]
@@ -817,24 +863,30 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
-        cpu.memory[0x0505] = 0x01;
+        let opperand: u8 = 0x01;
+        let result: u8 = opperand;
+        cpu.memory[0x0505] = opperand;
         cpu.load(vec![0xAD, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x01);
+        assert_eq!(cpu.accumulator, result);
 
+        let opperand: u8 = 0x02;
+        let result: u8 = opperand;
         cpu.reset();
-        cpu.memory[0x0506] = 0x02;
+        cpu.memory[0x0506] = opperand;
         cpu.register_x = 0x01;
         cpu.load(vec![0xBD, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x02);
+        assert_eq!(cpu.accumulator, result);
 
+        let opperand: u8 = 0x03;
+        let result: u8 = opperand;
         cpu.reset();
-        cpu.memory[0x0507] = 0x03;
+        cpu.memory[0x0507] = opperand;
         cpu.register_y = 0x02;
         cpu.load(vec![0xB9, 0x05, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x03);
+        assert_eq!(cpu.accumulator, result);
     }
 
     #[test]
@@ -843,22 +895,26 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
+        let opperand: u8 = 0x01;
+        let result: u8 = opperand;
         cpu.register_x = 0x01;
         cpu.memory[0x06] = 0x05;
         cpu.memory[0x07] = 0x05;
-        cpu.memory[0x0505] = 0x01;
+        cpu.memory[0x0505] = opperand;
         cpu.load(vec![0xA1, 0x05, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x01);
+        assert_eq!(cpu.accumulator, result);
 
+        let opperand: u8 = 0x02;
+        let result: u8 = opperand;
         cpu.reset();
         cpu.register_y = 0x02;
         cpu.memory[0x10] = 0x06;
         cpu.memory[0x11] = 0x06;
-        cpu.memory[0x0608] = 0x02;
+        cpu.memory[0x0608] = opperand;
         cpu.load(vec![0xB1, 0x10, 0x00]);
         cpu.run();
-        assert_eq!(cpu.accumulator, 0x02);
+        assert_eq!(cpu.accumulator, result);
     }
 
     #[test]
