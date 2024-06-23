@@ -128,6 +128,10 @@ impl CPU {
         self.status = self.status & !flag;
     }
 
+    fn get_flag(&mut self, flag: u8) -> bool {
+        (self.status & flag) > 0
+    }
+
     fn set_zero_and_neg_flags(&mut self, val: u8) {
         if val == 0 {
             self.set_flag(F_ZERO);
@@ -141,6 +145,28 @@ impl CPU {
         else {
             self.unset_flag(F_NEG);
         }
+    }
+
+    fn adc(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr);
+        let prev_acc: u8 = self.accumulator;
+        let sum: u16 = self.accumulator as u16 + operand as u16 + self.get_flag(F_CARRY) as u16;
+        self.accumulator = sum as u8;
+
+        if sum > 0xFF {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.unset_flag(F_CARRY)
+        }
+        if ((prev_acc ^ self.accumulator) & (operand ^ self.accumulator) & 0b1000_0000) != 0 {
+            self.set_flag(F_OVERFLOW);
+        }
+        else {
+            self.unset_flag(F_OVERFLOW);
+        }
+        self.set_zero_and_neg_flags(self.accumulator);
     }
 
     fn and(&mut self, mode: &AddressingMode) {
@@ -201,6 +227,7 @@ impl CPU {
 
             // Run corresponding operation function
             match code {
+                0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
                 0xE8 => self.inx(),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
@@ -381,6 +408,8 @@ mod test {
         assert_eq!(cpu.status, F_CARRY);
         cpu.set_flag(F_BRK);
         assert_eq!(cpu.status, F_CARRY | F_BRK);
+        cpu.set_flag(F_CARRY);
+        assert_eq!(cpu.status, F_CARRY | F_BRK);
     }
 
     #[test]
@@ -390,6 +419,8 @@ mod test {
         cpu.unset_flag(F_CARRY);
         assert_eq!(cpu.status, !F_CARRY);
         cpu.unset_flag(F_BRK);
+        assert_eq!(cpu.status, !(F_CARRY | F_BRK));
+        cpu.unset_flag(F_CARRY);
         assert_eq!(cpu.status, !(F_CARRY | F_BRK));
     }
 
@@ -442,6 +473,168 @@ mod test {
         assert_eq!(cpu.accumulator, 0x05);
         assert_eq!(cpu.register_x, 0);
         assert_eq!(cpu.register_y, 0);
+    }
+
+    #[test]
+    fn test_adc_immediate() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        cpu.reset();
+
+        // Test basic add without flags
+        cpu.accumulator = 0x05;
+        cpu.load(vec![0x69, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x0A);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_OVERFLOW == 0);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test add with carry flag
+        cpu.reset();
+        cpu.accumulator = 0x05;
+        cpu.set_flag(F_CARRY);
+        cpu.load(vec![0x69, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x0B);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_OVERFLOW == 0);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_ZERO flag set for now add
+        cpu.reset();
+        cpu.accumulator = 0;
+        cpu.load(vec![0x69, 0x00, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_OVERFLOW == 0);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_ZERO and F_CARRY flags
+        cpu.reset();
+        cpu.accumulator = 0xFF;
+        cpu.load(vec![0x69, 0x01, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_OVERFLOW == 0);
+        assert!(cpu.status & F_CARRY == F_CARRY);
+
+        // Test F_NEG and F_OVERFLOW flags
+        cpu.reset();
+        cpu.accumulator = 0b0111_1111;
+        cpu.load(vec![0x69, 0x01, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0b1000_0000);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+        assert!(cpu.status & F_OVERFLOW == F_OVERFLOW);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_NEG flag
+        cpu.reset();
+        cpu.accumulator = 0b1000_0000;
+        cpu.set_flag(F_NEG);
+        cpu.load(vec![0x69, 0x01, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0b1000_0001);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+        assert!(cpu.status & F_OVERFLOW == 0);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_OVERFLOW flag
+        cpu.reset();
+        cpu.accumulator = 0b1000_0000;
+        cpu.set_flag(F_NEG);
+        cpu.load(vec![0x69, 0b1000_0001, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0b0000_0001);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_OVERFLOW == F_OVERFLOW);
+        assert!(cpu.status & F_CARRY == F_CARRY);
+    }
+
+    #[test]
+    fn test_adc_zero_page() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        cpu.reset();
+
+        cpu.accumulator = 0x05;
+        cpu.memory[0x05] = 0x01;
+        cpu.load(vec![0x65, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x06);
+
+        cpu.reset();
+        cpu.accumulator = 0x02;
+        cpu.register_x = 0x01;
+        cpu.memory[0x06] = 0x02;
+        cpu.load(vec![0x75, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x04);
+    }
+
+    #[test]
+    fn test_adc_absolute() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        cpu.reset();
+
+        cpu.accumulator = 0x01;
+        cpu.memory[0x0505] = 0x02;
+        cpu.load(vec![0x6D, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x03);
+
+        cpu.reset();
+        cpu.accumulator = 0x03;
+        cpu.memory[0x0506] = 0x04;
+        cpu.register_x = 0x01;
+        cpu.load(vec![0x7D, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x07);
+
+        cpu.reset();
+        cpu.accumulator = 0x05;
+        cpu.memory[0x0507] = 0x06;
+        cpu.register_y = 0x02;
+        cpu.load(vec![0x79, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x0B);
+    }
+
+    #[test]
+    fn test_adc_indirect() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        cpu.reset();
+
+        cpu.accumulator = 0x01;
+        cpu.register_x = 0x01;
+        cpu.memory[0x06] = 0x05;
+        cpu.memory[0x07] = 0x05;
+        cpu.memory[0x0505] = 0x02;
+        cpu.load(vec![0x61, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x03);
+
+        cpu.reset();
+        cpu.accumulator = 0x03;
+        cpu.register_y = 0x02;
+        cpu.memory[0x10] = 0x06;
+        cpu.memory[0x11] = 0x06;
+        cpu.memory[0x0608] = 0x04;
+        cpu.load(vec![0x71, 0x10, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x07);
     }
 
     #[test]
