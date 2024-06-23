@@ -444,8 +444,8 @@ mod test {
     }
 
     #[test]
-    fn test_lda() {
-        let mut cpu = CPU::new();
+    fn test_lda_immediate() {
+        let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0x05, 0x00]);
         assert_eq!(cpu.accumulator, 0x05);
         assert!(cpu.status & F_ZERO == 0);
@@ -458,6 +458,66 @@ mod test {
         cpu.load_and_run(vec![0xA9, 0xff, 0x00]);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
+    }
+
+    #[test]
+    fn test_lda_zero_page() {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x05] = 0x01;
+        cpu.load_and_run(vec![0xA5, 0x05, 0x00]);
+        assert_eq!(cpu.accumulator, 0x01);
+
+        cpu.reset();
+        cpu.memory[0x06] = 0x02;
+        cpu.register_x = 0x01;
+        cpu.load(vec![0xB5, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x02);
+    }
+
+    #[test]
+    fn test_lda_absolute() {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x0505] = 0x01;
+        cpu.load_and_run(vec![0xAD, 0x05, 0x05, 0x00]);
+        assert_eq!(cpu.accumulator, 0x01);
+
+        cpu.reset();
+        cpu.memory[0x0506] = 0x02;
+        cpu.register_x = 0x01;
+        cpu.load(vec![0xBD, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x02);
+
+        cpu.reset();
+        cpu.memory[0x0507] = 0x03;
+        cpu.register_y = 0x02;
+        cpu.load(vec![0xB9, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x03);
+    }
+
+    #[test]
+    fn test_lda_indirect() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        cpu.reset();
+        cpu.register_x = 0x01;
+        cpu.memory[0x06] = 0x05;
+        cpu.memory[0x07] = 0x05;
+        cpu.memory[0x0505] = 0x01;
+        cpu.load(vec![0xA1, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x01);
+
+        cpu.reset();
+        cpu.register_y = 0x02;
+        cpu.memory[0x10] = 0x06;
+        cpu.memory[0x11] = 0x06;
+        cpu.memory[0x0608] = 0x02;
+        cpu.load(vec![0xB1, 0x10, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, 0x02);
     }
 
     #[test]
