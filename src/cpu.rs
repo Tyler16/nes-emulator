@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::opcodes;
 use crate::opcodes::AddressingMode;
 
-const MEM_SIZE: usize = 0xFFFF;
+const MEM_SIZE: usize = 0x10000;
 const PRG_REF: u16 = 0xFFFC;
 const PRG_START: u16 = 0x8000;
 
@@ -73,6 +73,15 @@ impl CPU {
     fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
         match mode {
             AddressingMode::Immediate => self.program_counter,
+            AddressingMode::Relative => {
+                let diff: i8 = self.mem_read(self.program_counter) as i8;
+                if diff >= 0 {
+                    self.program_counter.wrapping_add(diff as u16)
+                }
+                else {
+                    self.program_counter.wrapping_sub((-diff) as u16)
+                }
+            },
             AddressingMode::ZeroPage => self.mem_read(self.program_counter) as u16,
             AddressingMode::ZeroPage_X => {
                 let base: u8 = self.mem_read(self.program_counter);
@@ -99,6 +108,14 @@ impl CPU {
                 let base: u16 = self.mem_read_u16(self.program_counter);
                 self.mem_read_u16(base)
             },
+            AddressingMode::Indirect_X => {
+                let base: u8 = self.mem_read(self.program_counter);
+                self.mem_read_u16(base.wrapping_add(self.register_x) as u16)
+            }
+            AddressingMode::Indirect_Y => {
+                let base: u8 = self.mem_read(self.program_counter);
+                self.mem_read_u16(base as u16).wrapping_add(self.register_y as u16)
+            }
             _ => 0,
         }
     }
@@ -226,6 +243,124 @@ mod test {
         cpu.mem_write_u16(PRG_START, 0x0508);
         assert_eq!(cpu.memory[PRG_START as usize], 0x08);
         assert_eq!(cpu.memory[(PRG_START + 1) as usize], 0x05);
+    }
+
+    #[test]
+    fn test_get_operand_address_immediate() {
+        let mut cpu: CPU = CPU::new();
+        cpu.program_counter = PRG_START;
+        let immediate: u16 = cpu.get_operand_address(&AddressingMode::Immediate);
+        assert_eq!(immediate, PRG_START);
+    }
+
+    #[test]
+    fn test_get_operand_address_relative() {
+        let mut cpu: CPU = CPU::new();
+        cpu.program_counter = PRG_START;
+        cpu.memory[PRG_START as usize] = 1;
+        let relative: u16 = cpu.get_operand_address(&AddressingMode::Relative);
+        assert_eq!(relative, PRG_START.wrapping_add(1));
+
+        cpu.memory[PRG_START as usize] = (-1 as i8) as u8;
+        let relative_neg: u16 = cpu.get_operand_address(&AddressingMode::Relative);
+        assert_eq!(relative_neg, PRG_START.wrapping_sub(1));
+
+        cpu.program_counter = (MEM_SIZE - 1) as u16;
+        cpu.memory[MEM_SIZE - 1] = 1;
+        let relative_over: u16 = cpu.get_operand_address(&AddressingMode::Relative);
+        assert_eq!(relative_over, 0);
+
+        cpu.program_counter = 0;
+        cpu.memory[0] = (-1 as i8) as u8;
+        let relative_under: u16 = cpu.get_operand_address(&AddressingMode::Relative);
+        assert_eq!(relative_under, (MEM_SIZE - 1) as u16);
+    }
+
+    #[test]
+    fn test_get_operand_address_zero_page() {
+        let mut cpu: CPU = CPU::new();
+        cpu.program_counter = PRG_START;
+        cpu.memory[PRG_START as usize] = 1;
+        let zero_page: u16 = cpu.get_operand_address(&AddressingMode::ZeroPage);
+        assert_eq!(zero_page, 1);
+
+        cpu.register_x = 3;
+        let zero_page_x: u16 = cpu.get_operand_address(&AddressingMode::ZeroPage_X);
+        assert_eq!(zero_page_x, 4);
+
+        cpu.register_x = 0xFF;
+        let zero_page_x_over: u16 = cpu.get_operand_address(&AddressingMode::ZeroPage_X);
+        assert_eq!(zero_page_x_over, 0);
+        
+        cpu.register_y = 4;
+        let zero_page_y: u16 = cpu.get_operand_address(&AddressingMode::ZeroPage_Y);
+        assert_eq!(zero_page_y, 5);
+
+        cpu.register_y = 0xFF;
+        let zero_page_y_over: u16 = cpu.get_operand_address(&AddressingMode::ZeroPage_Y);
+        assert_eq!(zero_page_y_over, 0);
+    }
+
+    #[test]
+    fn test_get_operand_address_absolute() {
+        let mut cpu: CPU = CPU::new();
+        cpu.program_counter = PRG_START;
+        cpu.memory[PRG_START as usize] = 0x01;
+        cpu.memory[(PRG_START + 1) as usize] = 0xFF;
+        let absolute: u16 = cpu.get_operand_address(&AddressingMode::Absolute);
+        assert_eq!(absolute, 0xFF01);
+        
+        cpu.register_x = 2;
+        let absolute_x: u16 = cpu.get_operand_address(&AddressingMode::Absolute_X);
+        assert_eq!(absolute_x, 0xFF03);
+        
+        cpu.register_x = 0xFF;
+        let absolute_x_over: u16 = cpu.get_operand_address(&AddressingMode::Absolute_X);
+        assert_eq!(absolute_x_over, 0);
+
+        cpu.register_y = 3;
+        let absolute_y: u16 = cpu.get_operand_address(&AddressingMode::Absolute_Y);
+        assert_eq!(absolute_y, 0xFF04);
+
+        cpu.register_y = 0xFF;
+        let absolute_y_over: u16 = cpu.get_operand_address(&AddressingMode::Absolute_Y);
+        assert_eq!(absolute_y_over, 0);
+    }
+
+    #[test]
+    fn test_get_operand_address_indirect() {
+        let mut cpu: CPU = CPU::new();
+        cpu.program_counter = PRG_START;
+        cpu.memory[PRG_START as usize] = 0x01;
+        cpu.memory[(PRG_START + 1) as usize] = 0xFF;
+        cpu.memory[0xFF01] = 0x10;
+        cpu.memory[0xFF02] = 0x20;
+        let indirect: u16 = cpu.get_operand_address(&AddressingMode::Indirect);
+        assert_eq!(indirect, 0x2010);
+
+        cpu.register_x = 2;
+        cpu.memory[0x03] = 0x30;
+        cpu.memory[0x04] = 0x40;
+        let indirect_x: u16 = cpu.get_operand_address(&AddressingMode::Indirect_X);
+        assert_eq!(indirect_x, 0x4030);
+
+        cpu.register_x = 0xFF;
+        cpu.memory[0x00] = 0x50;
+        cpu.memory[0x01] = 0x60;
+        let indirect_x_over: u16 = cpu.get_operand_address(&AddressingMode::Indirect_X);
+        assert_eq!(indirect_x_over, 0x6050);
+
+        cpu.register_y = 3;
+        cpu.memory[0x01] = 0x70;
+        cpu.memory[0x02] = 0x80;
+        let indirect_y: u16 = cpu.get_operand_address(&AddressingMode::Indirect_Y);
+        assert_eq!(indirect_y, 0x8073);
+
+        cpu.register_y = 0x01;
+        cpu.memory[0x01] = 0xFF;
+        cpu.memory[0x02] = 0xFF;
+        let indirect_y_over: u16 = cpu.get_operand_address(&AddressingMode::Indirect_Y);
+        assert_eq!(indirect_y_over, 0x0000);
     }
 
     #[test]
