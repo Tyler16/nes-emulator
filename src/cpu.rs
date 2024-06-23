@@ -127,12 +127,7 @@ impl CPU {
     }
 
     fn inx(&mut self) {
-        if self.register_x == 0xff {
-            self.register_x = 0x00;
-        }
-        else {
-            self.register_x += 1;
-        }
+        self.register_x = self.register_x.wrapping_add(1);
 
         self.set_zero_and_neg_flags(self.register_x);
     }
@@ -304,14 +299,14 @@ mod test {
     }
 
     #[test]
-    fn test_0x00_brk_break_flag() {
+    fn test_brk() {
         let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0x00]);
         assert!(cpu.status & F_BRK == F_BRK);
     }
 
     #[test]
-    fn test_0xa9_lda_immediate_load_data() {
+    fn test_lda() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xA9, 0x05, 0x00]);
         assert_eq!(cpu.accumulator, 0x05);
@@ -328,7 +323,7 @@ mod test {
     }
 
     #[test]
-    fn test_0xaa_tax_load_data() {
+    fn test_tax() {
         let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0x05, 0xAA, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
@@ -345,7 +340,7 @@ mod test {
     }
 
     #[test]
-    fn test_0xe8_inx_increment() {
+    fn test_inx() {
         let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0, 0xAA, 0xE8, 0x00]);
         assert_eq!(cpu.register_x, 0x01);
