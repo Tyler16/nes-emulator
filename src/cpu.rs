@@ -178,28 +178,28 @@ impl CPU {
     }
 
     fn asl(&mut self, mode: &AddressingMode) {
+        let mut initial_val: u8 = 0;
+        let mut final_val: u8 = 0;
         match mode {
             AddressingMode::Accumulator => {
-                if self.accumulator & 0b1000_0000 != 0 {
-                    self.set_flag(F_CARRY);
-                }
-                else {
-                    self.unset_flag(F_CARRY);
-                }
+                initial_val = self.accumulator;
                 self.accumulator <<= 1;
-                self.set_zero_and_neg_flags(self.accumulator);
+                final_val = self.accumulator;
             }
             _ => {
                 let addr: u16 = self.get_operand_address(mode);
-                let mem_val: u8 = self.mem_read(addr);
-                if mem_val & 0b1000_0000 != 0 {
-                    self.set_flag(F_CARRY);
-                }
-                let res: u8 = mem_val << 1;
-                self.mem_write(addr, res);
-                self.set_zero_and_neg_flags(res);
+                initial_val = self.mem_read(addr);
+                final_val = initial_val << 1;
+                self.mem_write(addr, final_val);
             }
         }
+        if initial_val & 0b1000_0000 != 0 {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.unset_flag(F_CARRY);
+        }
+        self.set_zero_and_neg_flags(final_val);
     }
 
     fn inx(&mut self) {
@@ -255,6 +255,7 @@ impl CPU {
             match code {
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
+                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
                 0xE8 => self.inx(),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
                 0xAA => self.tax(),
@@ -815,28 +816,192 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
+        // Test no flags set
         let opperand: u8 = 0b0000_0001;
         let expected: u8 = opperand << 1;
         cpu.accumulator = opperand;
-        cpu.load(vec![0x0A, 0b0110_0101, 0x00]);
+        cpu.load(vec![0x0A, 0x00]);
         cpu.run();
         assert_eq!(cpu.accumulator, expected);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == 0);
 
+        // Test F_NEG only
+        let opperand: u8 = 0b0100_0000;
+        let expected: u8 = opperand << 1;
         cpu.reset();
-        cpu.accumulator = 0b1111_1111;
-        cpu.load(vec![0x29, 0x00, 0x00]);
+        cpu.accumulator = opperand;
+        cpu.load(vec![0x0A, 0x00]);
         cpu.run();
-        assert!(cpu.status & F_ZERO == F_ZERO);
-        assert!(cpu.status & F_NEG == 0);
-
-        cpu.reset();
-        cpu.accumulator = 0b1111_1111;
-        cpu.load(vec![0x29, 0b1000_0000, 0x00]);
-        cpu.run();
+        assert_eq!(cpu.accumulator, expected);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_NEG and F_CARRY
+        let opperand: u8 = 0b1100_0000;
+        let expected: u8 = opperand << 1;
+        cpu.reset();
+        cpu.accumulator = opperand;
+        cpu.load(vec![0x0A, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+        assert!(cpu.status & F_CARRY == F_CARRY);
+
+        // Test F_CARRY and F_ZERO
+        let opperand: u8 = 0b1000_0000;
+        let expected: u8 = opperand << 1;
+        cpu.reset();
+        cpu.accumulator = opperand;
+        cpu.load(vec![0x0A, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, expected);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == F_CARRY);
+
+        // Test F_ZERO only
+        let opperand: u8 = 0b0000_0000;
+        let expected: u8 = opperand << 1;
+        cpu.reset();
+        cpu.accumulator = opperand;
+        cpu.load(vec![0x0A, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, expected);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_CARRY only
+        let opperand: u8 = 0b1010_0000;
+        let expected: u8 = opperand << 1;
+        cpu.reset();
+        cpu.accumulator = opperand;
+        cpu.load(vec![0x0A, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == F_CARRY);
+    }
+
+    #[test]
+    fn test_asl_zero_page() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        cpu.reset();
+
+        // Test no flags set
+        let opperand: u8 = 0b0000_0001;
+        let result: u8 = opperand << 1;
+        cpu.memory[0x05] = opperand;
+        cpu.load(vec![0x06, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x05], result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_ZERO set
+        let opperand: u8 = 0b0000_0000;
+        let result: u8 = opperand << 1;
+        cpu.reset();
+        cpu.memory[0x05] = opperand;
+        cpu.load(vec![0x06, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x05], result);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_NEG set
+        let opperand: u8 = 0b0100_0000;
+        let result: u8 = opperand << 1;
+        cpu.reset();
+        cpu.memory[0x05] = opperand;
+        cpu.load(vec![0x06, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x05], result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+        assert!(cpu.status & F_CARRY == 0);
+
+        // Test F_CARRY set
+        let opperand: u8 = 0b1010_0000;
+        let result: u8 = opperand << 1;
+        cpu.reset();
+        cpu.memory[0x05] = opperand;
+        cpu.load(vec![0x06, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x05], result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == F_CARRY);
+
+        // Test F_ZERO and F_CARRY set
+        let opperand: u8 = 0b1000_0000;
+        let result: u8 = opperand << 1;
+        cpu.reset();
+        cpu.memory[0x05] = opperand;
+        cpu.load(vec![0x06, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x05], result);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == F_CARRY);
+
+        // Test F_CARRY and F_NEG set
+        let opperand: u8 = 0b1100_0000;
+        let result: u8 = opperand << 1;
+        cpu.reset();
+        cpu.memory[0x05] = opperand;
+        cpu.load(vec![0x06, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x05], result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+        assert!(cpu.status & F_CARRY == F_CARRY);
+
+        // Test zero page X
+        let opperand: u8 = 0x02;
+        let result: u8 = opperand << 1;
+        cpu.reset();
+        cpu.memory[0x06] = opperand;
+        cpu.register_x = 0x01;
+        cpu.load(vec![0x16, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x06], result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+        assert!(cpu.status & F_CARRY == 0);
+    }
+
+    #[test]
+    fn test_asl_absolute() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        cpu.reset();
+
+        // Test absolute
+        let opperand: u8 = 0x01;
+        let result: u8 = opperand << 1;
+        cpu.memory[0x0505] = opperand;
+        cpu.load(vec![0x0E, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x0505], result);
+
+        // Test absolute x
+        let opperand: u8 = 0x02;
+        let result: u8 = opperand << 1;
+        cpu.reset();
+        cpu.memory[0x0506] = opperand;
+        cpu.register_x = 0x01;
+        cpu.load(vec![0x1E, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.memory[0x0506], result);
     }
 
     #[test]
@@ -919,6 +1084,7 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
+        // Test absolute
         let opperand: u8 = 0x01;
         let result: u8 = opperand;
         cpu.memory[0x0505] = opperand;
@@ -926,6 +1092,7 @@ mod test {
         cpu.run();
         assert_eq!(cpu.accumulator, result);
 
+        // Test absolute x
         let opperand: u8 = 0x02;
         let result: u8 = opperand;
         cpu.reset();
@@ -934,7 +1101,8 @@ mod test {
         cpu.load(vec![0xBD, 0x05, 0x05, 0x00]);
         cpu.run();
         assert_eq!(cpu.accumulator, result);
-
+        
+        // Test absolute y
         let opperand: u8 = 0x03;
         let result: u8 = opperand;
         cpu.reset();
