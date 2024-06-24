@@ -220,6 +220,12 @@ impl CPU {
         self.set_zero_and_neg_flags(self.accumulator);
     }
 
+    fn tay(&mut self) {
+        self.register_y = self.accumulator;
+                    
+        self.set_zero_and_neg_flags(self.accumulator);
+    }
+
     pub fn load_and_run(&mut self, program: Vec<u8>) {
         self.load(program);
         self.reset();
@@ -265,6 +271,7 @@ impl CPU {
                 0xF8 => self.set_flag(F_DEC),
                 0x78 => self.set_flag(F_INT),
                 0xAA => self.tax(),
+                0xA8 => self.tay(),
                 0x00 => {
                     self.set_flag(F_BRK);
                     return;
@@ -1249,6 +1256,23 @@ mod test {
         assert!(cpu.status & F_NEG == 0);
 
         cpu.load_and_run(vec![0xA9, 0xff, 0xAA, 0x00]);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+    }
+
+    #[test]
+    fn test_tay() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0xA9, 0x05, 0xA8, 0x00]);
+        assert_eq!(cpu.register_y, 0x05);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        cpu.load_and_run(vec![0xA9, 0, 0xA8, 0x00]);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        cpu.load_and_run(vec![0xA9, 0xff, 0xA8, 0x00]);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
     }
