@@ -183,6 +183,9 @@ impl CPU {
                 if self.accumulator & 0b1000_0000 != 0 {
                     self.set_flag(F_CARRY);
                 }
+                else {
+                    self.unset_flag(F_CARRY);
+                }
                 self.accumulator <<= 1;
                 self.set_zero_and_neg_flags(self.accumulator);
             }
@@ -192,7 +195,9 @@ impl CPU {
                 if mem_val & 0b1000_0000 != 0 {
                     self.set_flag(F_CARRY);
                 }
-                self.mem_write(addr, mem_val << 1);
+                let res: u8 = mem_val << 1;
+                self.mem_write(addr, res);
+                self.set_zero_and_neg_flags(res);
             }
         }
     }
@@ -802,6 +807,36 @@ mod test {
         cpu.load(vec![0x31, 0x10, 0x00]);
         cpu.run();
         assert_eq!(cpu.accumulator, expected);
+    }
+
+    #[test]
+    fn test_asl_accumulator() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        cpu.reset();
+
+        let opperand: u8 = 0b0000_0001;
+        let expected: u8 = opperand << 1;
+        cpu.accumulator = opperand;
+        cpu.load(vec![0x0A, 0b0110_0101, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.accumulator, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        cpu.reset();
+        cpu.accumulator = 0b1111_1111;
+        cpu.load(vec![0x29, 0x00, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        cpu.reset();
+        cpu.accumulator = 0b1111_1111;
+        cpu.load(vec![0x29, 0b1000_0000, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
     }
 
     #[test]
