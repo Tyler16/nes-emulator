@@ -96,16 +96,9 @@ lazy_static! {
         // TODO
         OpCode::new(0x70, "BVS", 2, 2, AddressingMode::Relative),
 
-        // TODO
         OpCode::new(0x18, "CLC", 1, 2, AddressingMode::Implied),
-
-        // TODO
         OpCode::new(0xD8, "CLD", 1, 2, AddressingMode::Implied),
-
-        // TODO
         OpCode::new(0x58, "CLI", 1, 2, AddressingMode::Implied),
-
-        // TODO
         OpCode::new(0xB8, "CLV", 1, 2, AddressingMode::Implied),
 
         // TODO
@@ -253,13 +246,8 @@ lazy_static! {
         OpCode::new(0xE1, "SBC", 2, 6, AddressingMode::Indirect_X),
         OpCode::new(0xF1, "SBC", 2, 5, AddressingMode::Indirect_Y),
 
-        // TODO
         OpCode::new(0x38, "SEC", 1, 2, AddressingMode::Implied),
-
-        // TODO
         OpCode::new(0xF8, "SED", 1, 2, AddressingMode::Implied),
-
-        // TODO
         OpCode::new(0x78, "SEI", 1, 2, AddressingMode::Implied),
 
         // TODO

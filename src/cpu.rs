@@ -256,11 +256,18 @@ impl CPU {
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
                 0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
+                0x18 => self.unset_flag(F_CARRY),
+                0xD8 => self.unset_flag(F_DEC),
+                0x58 => self.unset_flag(F_INT),
+                0xB8 => self.unset_flag(F_OVERFLOW),
                 0xE8 => self.inx(),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
+                0x38 => self.set_flag(F_CARRY),
+                0xF8 => self.set_flag(F_DEC),
+                0x78 => self.set_flag(F_INT),
                 0xAA => self.tax(),
                 0x00 => {
-                    self.status = self.status | F_BRK;
+                    self.set_flag(F_BRK);
                     return;
                 },
                 _ => todo!(""),
@@ -1005,6 +1012,56 @@ mod test {
     }
 
     #[test]
+    fn test_clear_flag_ops() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        
+        cpu.reset();
+        cpu.load(vec![0x18, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_CARRY == 0);
+
+        cpu.reset();
+        cpu.set_flag(F_CARRY);
+        cpu.load(vec![0x18, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_CARRY == 0);
+
+        cpu.reset();
+        cpu.load(vec![0xD8, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_DEC == 0);
+
+        cpu.reset();
+        cpu.set_flag(F_DEC);
+        cpu.load(vec![0xD8, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_DEC == 0);
+
+        cpu.reset();
+        cpu.load(vec![0x58, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_INT == 0);
+
+        cpu.reset();
+        cpu.set_flag(F_INT);
+        cpu.load(vec![0x58, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_INT == 0);
+
+        cpu.reset();
+        cpu.load(vec![0xB8, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_OVERFLOW == 0);
+
+        cpu.reset();
+        cpu.set_flag(F_OVERFLOW);
+        cpu.load(vec![0xB8, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_OVERFLOW == 0);
+    }
+
+    #[test]
     fn test_brk() {
         let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0x00]);
@@ -1139,6 +1196,45 @@ mod test {
         cpu.load(vec![0xB1, 0x10, 0x00]);
         cpu.run();
         assert_eq!(cpu.accumulator, result);
+    }
+
+    #[test]
+    fn test_set_flag_ops() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+        
+        cpu.reset();
+        cpu.load(vec![0x38, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_CARRY == F_CARRY);
+
+        cpu.reset();
+        cpu.set_flag(F_CARRY);
+        cpu.load(vec![0x38, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_CARRY == F_CARRY);
+
+        cpu.reset();
+        cpu.load(vec![0xF8, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_DEC == F_DEC);
+
+        cpu.reset();
+        cpu.set_flag(F_DEC);
+        cpu.load(vec![0xF8, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_DEC == F_DEC);
+
+        cpu.reset();
+        cpu.load(vec![0x78, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_INT == F_INT);
+
+        cpu.reset();
+        cpu.set_flag(F_INT);
+        cpu.load(vec![0x78, 0x00]);
+        cpu.run();
+        assert!(cpu.status & F_INT == F_INT);
     }
 
     #[test]
