@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Add;
 use crate::opcodes;
 use crate::opcodes::AddressingMode;
 
@@ -174,6 +175,26 @@ impl CPU {
         self.accumulator = self.mem_read(addr) & self.accumulator;
 
         self.set_zero_and_neg_flags(self.accumulator);
+    }
+
+    fn asl(&mut self, mode: &AddressingMode) {
+        match mode {
+            AddressingMode::Accumulator => {
+                if self.accumulator & 0b1000_0000 != 0 {
+                    self.set_flag(F_CARRY);
+                }
+                self.accumulator <<= 1;
+                self.set_zero_and_neg_flags(self.accumulator);
+            }
+            _ => {
+                let addr: u16 = self.get_operand_address(mode);
+                let mem_val: u8 = self.mem_read(addr);
+                if mem_val & 0b1000_0000 != 0 {
+                    self.set_flag(F_CARRY);
+                }
+                self.mem_write(addr, mem_val << 1);
+            }
+        }
     }
 
     fn inx(&mut self) {
