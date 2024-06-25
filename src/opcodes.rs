@@ -127,10 +127,8 @@ lazy_static! {
         OpCode::new(0xCE, "DEC", 3, 6, AddressingMode::Absolute),
         OpCode::new(0xDE, "DEC", 3, 7, AddressingMode::Absolute_X),
 
-        // TODO
         OpCode::new(0xCA, "DEX", 1, 2, AddressingMode::Implied),
 
-        // TODO
         OpCode::new(0x88, "DEY", 1, 2, AddressingMode::Implied),
 
         // TODO
@@ -151,7 +149,6 @@ lazy_static! {
 
         OpCode::new(0xE8, "INX", 1, 2, AddressingMode::Implied),
 
-        // TODO
         OpCode::new(0xC8, "INY", 1, 2, AddressingMode::Implied),
 
         // TODO
@@ -270,6 +267,7 @@ lazy_static! {
         OpCode::new(0x8C, "STY", 3, 4, AddressingMode::Absolute),
 
         OpCode::new(0xAA, "TAX", 1, 2, AddressingMode::Implied),
+
         OpCode::new(0xA8, "TAY", 1, 2, AddressingMode::Implied),
 
         // TODO

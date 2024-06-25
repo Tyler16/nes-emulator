@@ -201,10 +201,28 @@ impl CPU {
         self.set_zero_and_neg_flags(final_val);
     }
 
+    fn dex(&mut self) {
+        self.register_x = self.register_x.wrapping_sub(1);
+
+        self.set_zero_and_neg_flags(self.register_x);
+    }
+
+    fn dey(&mut self) {
+        self.register_y = self.register_y.wrapping_sub(1);
+
+        self.set_zero_and_neg_flags(self.register_y);
+    }
+
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
 
         self.set_zero_and_neg_flags(self.register_x);
+    }
+
+    fn iny(&mut self) {
+        self.register_y = self.register_y.wrapping_add(1);
+
+        self.set_zero_and_neg_flags(self.register_y);
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -212,6 +230,20 @@ impl CPU {
         self.accumulator = self.mem_read(addr);
 
         self.set_zero_and_neg_flags(self.accumulator);
+    }
+
+    fn ldx(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        self.register_x = self.mem_read(addr);
+
+        self.set_zero_and_neg_flags(self.register_x);
+    }
+
+    fn ldy(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        self.register_y = self.mem_read(addr);
+
+        self.set_zero_and_neg_flags(self.register_y);
     }
 
     fn tax(&mut self) {
@@ -265,8 +297,13 @@ impl CPU {
                 0xD8 => self.unset_flag(F_DEC),
                 0x58 => self.unset_flag(F_INT),
                 0xB8 => self.unset_flag(F_OVERFLOW),
+                0xCA => self.dex(),
+                0x88 => self.dey(),
                 0xE8 => self.inx(),
+                0xC8 => self.iny(),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
+                0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => self.ldx(&opcode.mode),
+                0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
                 0x38 => self.set_flag(F_CARRY),
                 0xF8 => self.set_flag(F_DEC),
                 0x78 => self.set_flag(F_INT),
@@ -1070,25 +1107,171 @@ mod test {
     #[test]
     fn test_brk() {
         let mut cpu: CPU = CPU::new();
+
         cpu.load_and_run(vec![0x00]);
         assert!(cpu.status & F_BRK == F_BRK);
     }
 
     #[test]
-    fn test_inx() {
+    fn test_dex() {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![0xA9, 0, 0xAA, 0xE8, 0x00]);
-        assert_eq!(cpu.register_x, 0x01);
+
+        // Test no flags
+        let test_val: u8 = 0x02;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xCA, 0x00]);
+        assert_eq!(cpu.register_x, expected);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
 
-        cpu.load_and_run(vec![0xA9, 0xff, 0xAA, 0xE8, 0x00]);
-        assert_eq!(cpu.register_x, 0);
+        // Test F_NEG
+        let test_val: u8 = 0xff;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xCA, 0x00]);
+        assert_eq!(cpu.register_x, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+
+        // Test F_ZERO
+        let test_val: u8 = 0x01;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xCA, 0x00]);
+        assert_eq!(cpu.register_x, expected);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
 
-        cpu.load_and_run(vec![0xA9, 0x7F, 0xAA, 0xE8, 0x00]);
-        assert_eq!(cpu.register_x, 0x80);
+        // Test overflow
+        let test_val: u8 = 0x00;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xCA, 0x00]);
+        assert_eq!(cpu.register_x, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+
+        // Test F_NEG changes
+        let test_val: u8 = 0x80;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xCA, 0x00]);
+        assert_eq!(cpu.register_x, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+    }
+
+    #[test]
+    fn test_dey() {
+        let mut cpu: CPU = CPU::new();
+
+        // Test no flags
+        let test_val: u8 = 0x02;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0x88, 0x00]);
+        assert_eq!(cpu.register_y, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_NEG
+        let test_val: u8 = 0xff;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0x88, 0x00]);
+        assert_eq!(cpu.register_y, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+
+        // Test F_ZERO
+        let test_val: u8 = 0x01;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0x88, 0x00]);
+        assert_eq!(cpu.register_y, expected);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test overflow
+        let test_val: u8 = 0x00;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0x88, 0x00]);
+        assert_eq!(cpu.register_y, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+
+        // Test F_NEG changes
+        let test_val: u8 = 0x80;
+        let expected: u8 = test_val.wrapping_sub(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0x88, 0x00]);
+        assert_eq!(cpu.register_y, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+    }
+
+    #[test]
+    fn test_inx() {
+        let mut cpu: CPU = CPU::new();
+
+        // Test no flags
+        let test_val: u8 = 0;
+        let expected: u8 = test_val.wrapping_add(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xE8, 0x00]);
+        assert_eq!(cpu.register_x, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test overflow and F_ZERO
+        let test_val: u8 = 0xff;
+        let expected: u8 = test_val.wrapping_add(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xE8, 0x00]);
+        assert_eq!(cpu.register_x, expected);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_NEG
+        let test_val: u8 = 0x7F;
+        let expected: u8 = test_val.wrapping_add(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xE8, 0x00]);
+        assert_eq!(cpu.register_x, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+
+        // Test F_NEG stays same
+        let test_val: u8 = 0x80;
+        let expected: u8 = test_val.wrapping_add(1);
+        cpu.load_and_run(vec![0xA2, test_val, 0xE8, 0x00]);
+        assert_eq!(cpu.register_x, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+    }
+
+    #[test]
+    fn test_iny() {
+        let mut cpu: CPU = CPU::new();
+
+        // Test no flags
+        let test_val: u8 = 0;
+        let expected: u8 = test_val.wrapping_add(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0xC8, 0x00]);
+        assert_eq!(cpu.register_y, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test overflow and F_ZERO
+        let test_val: u8 = 0xff;
+        let expected: u8 = test_val.wrapping_add(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0xC8, 0x00]);
+        assert_eq!(cpu.register_y, expected);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_NEG
+        let test_val: u8 = 0x7F;
+        let expected: u8 = test_val.wrapping_add(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0xC8, 0x00]);
+        assert_eq!(cpu.register_y, expected);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+
+        // Test F_NEG stays same
+        let test_val: u8 = 0x80;
+        let expected: u8 = test_val.wrapping_add(1);
+        cpu.load_and_run(vec![0xA0, test_val, 0xC8, 0x00]);
+        assert_eq!(cpu.register_y, expected);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
     }
@@ -1099,18 +1282,21 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
+        // Test no flags
         cpu.load(vec![0xA9, 0x05, 0x00]);
         cpu.run();
         assert_eq!(cpu.accumulator, 0x05);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
 
+        // Test F_ZERO
         cpu.reset();
         cpu.load(vec![0xA9, 0x00, 0x00]);
         cpu.run();
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
 
+        // Test F_NEG
         cpu.reset();
         cpu.load(vec![0xA9, 0xff, 0x00]);
         cpu.run();
@@ -1124,6 +1310,7 @@ mod test {
         cpu.load_and_run(vec![0x00]);
         cpu.reset();
 
+        // Test zero page
         let opperand: u8 = 0x01;
         let result: u8 = opperand;
         cpu.memory[0x05] = opperand;
@@ -1131,6 +1318,7 @@ mod test {
         cpu.run();
         assert_eq!(cpu.accumulator, result);
 
+        // Test zero page X
         let opperand: u8 = 0x02;
         let result: u8 = opperand;
         cpu.reset();
@@ -1180,10 +1368,11 @@ mod test {
     fn test_lda_indirect() {
         let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0x00]);
-        cpu.reset();
 
+        // Test indirect x
         let opperand: u8 = 0x01;
         let result: u8 = opperand;
+        cpu.reset();
         cpu.register_x = 0x01;
         cpu.memory[0x06] = 0x05;
         cpu.memory[0x07] = 0x05;
@@ -1192,6 +1381,7 @@ mod test {
         cpu.run();
         assert_eq!(cpu.accumulator, result);
 
+        // Test indirect y
         let opperand: u8 = 0x02;
         let result: u8 = opperand;
         cpu.reset();
@@ -1202,6 +1392,178 @@ mod test {
         cpu.load(vec![0xB1, 0x10, 0x00]);
         cpu.run();
         assert_eq!(cpu.accumulator, result);
+    }
+
+    #[test]
+    fn test_ldx_immediate() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+
+        // Test no flags
+        let opperand: u8 = 0x05;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.load(vec![0xA2, opperand, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_x, result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_ZERO
+        let opperand: u8 = 0x00;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.load(vec![0xA2, opperand, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_x, result);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_NEG
+        let opperand: u8 = 0xFF;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.load(vec![0xA2, opperand, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_x, result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+    }
+
+    #[test]
+    fn test_ldx_zero_page() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+
+        // Test zero page
+        let opperand: u8 = 0x01;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.memory[0x05] = opperand;
+        cpu.load(vec![0xA6, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_x, result);
+
+        // Test zero page y
+        let opperand: u8 = 0x02;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.memory[0x06] = opperand;
+        cpu.register_y = 0x01;
+        cpu.load(vec![0xB6, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_x, result);
+    }
+
+    #[test]
+    fn test_ldx_absolute() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+
+        // Test absolute
+        let opperand: u8 = 0x01;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.memory[0x0505] = opperand;
+        cpu.load(vec![0xAE, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_x, result);
+        
+        // Test absolute y
+        let opperand: u8 = 0x03;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.memory[0x0507] = opperand;
+        cpu.register_y = 0x02;
+        cpu.load(vec![0xBE, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_x, result);
+    }
+
+    #[test]
+    fn test_ldy_immediate() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+
+        // Test no flags
+        let opperand: u8 = 0x05;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.load(vec![0xA0, opperand, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_y, result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_ZERO
+        let opperand: u8 = 0x00;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.load(vec![0xA0, opperand, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_y, result);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_NEG
+        let opperand: u8 = 0xFF;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.load(vec![0xA0, opperand, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_y, result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+    }
+
+    #[test]
+    fn test_ldy_zero_page() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+
+        // Test zero page
+        let opperand: u8 = 0x01;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.memory[0x05] = opperand;
+        cpu.load(vec![0xA4, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_y, result);
+
+        // Test zero page x
+        let opperand: u8 = 0x02;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.memory[0x06] = opperand;
+        cpu.register_x = 0x01;
+        cpu.load(vec![0xB4, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_y, result);
+    }
+
+    #[test]
+    fn test_ldy_absolute() {
+        let mut cpu: CPU = CPU::new();
+        cpu.load_and_run(vec![0x00]);
+
+        // Test absolute
+        let opperand: u8 = 0x01;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.memory[0x0505] = opperand;
+        cpu.load(vec![0xAC, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_y, result);
+        
+        // Test absolute x
+        let opperand: u8 = 0x03;
+        let result: u8 = opperand;
+        cpu.reset();
+        cpu.memory[0x0507] = opperand;
+        cpu.register_x = 0x02;
+        cpu.load(vec![0xBC, 0x05, 0x05, 0x00]);
+        cpu.run();
+        assert_eq!(cpu.register_y, result);
     }
 
     #[test]
@@ -1246,15 +1608,19 @@ mod test {
     #[test]
     fn test_tax() {
         let mut cpu: CPU = CPU::new();
+
+        // Test no flags
         cpu.load_and_run(vec![0xA9, 0x05, 0xAA, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
 
+        // Test F_ZERO
         cpu.load_and_run(vec![0xA9, 0, 0xAA, 0x00]);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
 
+        // Test F_NEG
         cpu.load_and_run(vec![0xA9, 0xff, 0xAA, 0x00]);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
@@ -1263,15 +1629,19 @@ mod test {
     #[test]
     fn test_tay() {
         let mut cpu: CPU = CPU::new();
+
+        // Test no flags
         cpu.load_and_run(vec![0xA9, 0x05, 0xA8, 0x00]);
         assert_eq!(cpu.register_y, 0x05);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
 
+        // Test F_ZERO
         cpu.load_and_run(vec![0xA9, 0, 0xA8, 0x00]);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
 
+        // Test F_NEG
         cpu.load_and_run(vec![0xA9, 0xff, 0xA8, 0x00]);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
