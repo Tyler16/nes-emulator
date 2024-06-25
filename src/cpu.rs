@@ -249,11 +249,23 @@ impl CPU {
     fn tax(&mut self) {
         self.register_x = self.accumulator;
                     
-        self.set_zero_and_neg_flags(self.accumulator);
+        self.set_zero_and_neg_flags(self.register_x);
     }
 
     fn tay(&mut self) {
         self.register_y = self.accumulator;
+                    
+        self.set_zero_and_neg_flags(self.register_y);
+    }
+
+    fn txa(&mut self) {
+        self.accumulator = self.register_x;
+                    
+        self.set_zero_and_neg_flags(self.accumulator);
+    }
+
+    fn tya(&mut self) {
+        self.accumulator = self.register_y;
                     
         self.set_zero_and_neg_flags(self.accumulator);
     }
@@ -309,6 +321,8 @@ impl CPU {
                 0x78 => self.set_flag(F_INT),
                 0xAA => self.tax(),
                 0xA8 => self.tay(),
+                0x8A => self.txa(),
+                0x98 => self.tya(),
                 0x00 => {
                     self.set_flag(F_BRK);
                     return;
@@ -1610,18 +1624,26 @@ mod test {
         let mut cpu: CPU = CPU::new();
 
         // Test no flags
-        cpu.load_and_run(vec![0xA9, 0x05, 0xAA, 0x00]);
-        assert_eq!(cpu.register_x, 0x05);
+        let opperand: u8 = 0x05;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA9, opperand, 0xAA, 0x00]);
+        assert_eq!(cpu.register_x, result);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
 
         // Test F_ZERO
+        let opperand: u8 = 0;
+        let result: u8 = opperand;
         cpu.load_and_run(vec![0xA9, 0, 0xAA, 0x00]);
+        assert_eq!(cpu.register_x, result);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
 
         // Test F_NEG
-        cpu.load_and_run(vec![0xA9, 0xff, 0xAA, 0x00]);
+        let opperand: u8 = 0xFF;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA9, 0xFF, 0xAA, 0x00]);
+        assert_eq!(cpu.register_x, result);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
     }
@@ -1631,18 +1653,84 @@ mod test {
         let mut cpu: CPU = CPU::new();
 
         // Test no flags
-        cpu.load_and_run(vec![0xA9, 0x05, 0xA8, 0x00]);
-        assert_eq!(cpu.register_y, 0x05);
+        let opperand: u8 = 0x05;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA9, opperand, 0xA8, 0x00]);
+        assert_eq!(cpu.register_y, result);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == 0);
 
         // Test F_ZERO
+        let opperand: u8 = 0;
+        let result: u8 = opperand;
         cpu.load_and_run(vec![0xA9, 0, 0xA8, 0x00]);
+        assert_eq!(cpu.register_y, result);
         assert!(cpu.status & F_ZERO == F_ZERO);
         assert!(cpu.status & F_NEG == 0);
 
         // Test F_NEG
-        cpu.load_and_run(vec![0xA9, 0xff, 0xA8, 0x00]);
+        let opperand: u8 = 0xFF;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA9, 0xFF, 0xA8, 0x00]);
+        assert_eq!(cpu.register_y, result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+    }
+
+    #[test]
+    fn test_txa() {
+        let mut cpu: CPU = CPU::new();
+
+        // Test no flags
+        let opperand: u8 = 0x05;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA2, opperand, 0x8A, 0x00]);
+        assert_eq!(cpu.accumulator, result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_ZERO
+        let opperand: u8 = 0;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA2, 0, 0x8A, 0x00]);
+        assert_eq!(cpu.accumulator, result);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_NEG
+        let opperand: u8 = 0xFF;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA2, 0xFF, 0x8A, 0x00]);
+        assert_eq!(cpu.accumulator, result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == F_NEG);
+    }
+
+    #[test]
+    fn test_tya() {
+        let mut cpu: CPU = CPU::new();
+
+        // Test no flags
+        let opperand: u8 = 0x05;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA0, opperand, 0x98, 0x00]);
+        assert_eq!(cpu.accumulator, result);
+        assert!(cpu.status & F_ZERO == 0);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_ZERO
+        let opperand: u8 = 0;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA0, 0, 0x98, 0x00]);
+        assert_eq!(cpu.accumulator, result);
+        assert!(cpu.status & F_ZERO == F_ZERO);
+        assert!(cpu.status & F_NEG == 0);
+
+        // Test F_NEG
+        let opperand: u8 = 0xFF;
+        let result: u8 = opperand;
+        cpu.load_and_run(vec![0xA0, 0xFF, 0x98, 0x00]);
+        assert_eq!(cpu.accumulator, result);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
     }

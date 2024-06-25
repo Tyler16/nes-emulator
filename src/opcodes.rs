@@ -167,14 +167,12 @@ lazy_static! {
         OpCode::new(0xA1, "LDA", 2, 6, AddressingMode::Indirect_X),
         OpCode::new(0xB1, "LDA", 2, 5, AddressingMode::Indirect_Y),
 
-        // TODO
         OpCode::new(0xA2, "LDX", 2, 2, AddressingMode::Immediate),
         OpCode::new(0xA6, "LDX", 2, 3, AddressingMode::ZeroPage),
         OpCode::new(0xB6, "LDX", 2, 4, AddressingMode::ZeroPage_Y),
         OpCode::new(0xAE, "LDX", 3, 4, AddressingMode::Absolute),
         OpCode::new(0xBE, "LDX", 3, 4, AddressingMode::Absolute_Y),
 
-        // TODO
         OpCode::new(0xA0, "LDY", 2, 2, AddressingMode::Immediate),
         OpCode::new(0xA4, "LDY", 2, 3, AddressingMode::ZeroPage),
         OpCode::new(0xB4, "LDY", 2, 4, AddressingMode::ZeroPage_X),
@@ -273,13 +271,11 @@ lazy_static! {
         // TODO
         OpCode::new(0xBA, "TSX", 1, 2, AddressingMode::Implied),
 
-        // TODO
         OpCode::new(0x8A, "TXA", 1, 2, AddressingMode::Implied),
 
         // TODO
         OpCode::new(0x9A, "TXS", 1, 2, AddressingMode::Implied),
 
-        // TODO
         OpCode::new(0x98, "TYA", 1, 2, AddressingMode::Implied),
     ];
 
