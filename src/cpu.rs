@@ -225,6 +225,12 @@ impl CPU {
         self.set_zero_and_neg_flags(self.register_y);
     }
 
+    fn jmp(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+
+        self.program_counter = addr;
+    }
+
     fn lda(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         self.accumulator = self.mem_read(addr);
@@ -313,6 +319,7 @@ impl CPU {
                 0x88 => self.dey(),
                 0xE8 => self.inx(),
                 0xC8 => self.iny(),
+                0x4C | 0x6c => self.jmp(&opcode.mode),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
                 0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => self.ldx(&opcode.mode),
                 0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
@@ -1288,6 +1295,26 @@ mod test {
         assert_eq!(cpu.register_y, expected);
         assert!(cpu.status & F_ZERO == 0);
         assert!(cpu.status & F_NEG == F_NEG);
+    }
+
+    #[test]
+    fn test_jmp_absolute() {
+        let mut cpu: CPU = CPU::new();
+
+        cpu.load_and_run(vec![0x4C, 0x05, 0x80, 0xA9, 0xAA, 0xA2, 0x11, 0x00]);
+        assert_eq!(cpu.register_x, 0x11);
+        assert_eq!(cpu.accumulator, 0);
+    }
+
+    #[test]
+    fn test_jmp_indirect() {
+        let mut cpu: CPU = CPU::new();
+
+        cpu.memory[0x10] = 0x05;
+        cpu.memory[0x11] = 0x80;
+        cpu.load_and_run(vec![0x6C, 0x10, 0x00, 0xA9, 0xAA, 0xA2, 0x11, 0x00]);
+        assert_eq!(cpu.register_x, 0x11);
+        assert_eq!(cpu.accumulator, 0);
     }
 
     #[test]
