@@ -220,6 +220,7 @@ impl CPU {
         let addr: u16 = self.get_operand_address(mode);
         let val: u8 = self.mem_read(addr);
         self.mem_write(addr, val.wrapping_sub(1));
+        self.set_zero_and_neg_flags(val.wrapping_sub(1));
     }
 
     fn dex(&mut self) {
@@ -236,7 +237,12 @@ impl CPU {
 
     fn eor(&mut self, mode: &AddressingMode) {}
 
-    fn inc(&mut self, mode: &AddressingMode) {}
+    fn inc(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let val: u8 = self.mem_read(addr);
+        self.mem_write(addr, val.wrapping_add(1));
+        self.set_zero_and_neg_flags(val.wrapping_add(1));
+    }
 
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
@@ -777,6 +783,36 @@ mod test {
 
     #[test_case(
         0x02, 0, 0x01, 0;
+        "dec no flags"
+    )]
+    #[test_case(
+        0x01, 0, 0x00, F_ZERO;
+        "dec sets zero flag"
+    )]
+    #[test_case(
+        0x81, F_NEG, 0x80, F_NEG;
+        "dec keeps neg flag"
+    )]
+    #[test_case(
+        0x00, F_ZERO, 0xFF, F_NEG;
+        "dec sets neg and clears zero flag on overflow"
+    )]
+    #[test_case(
+        0x80, F_NEG, 0x7F, 0;
+        "dec clears neg flag"
+    )]
+    fn test_dec(mem: u8, initial_status: u8, expected_mem: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x00] = 0x05;
+        cpu.memory[0x05] = mem;
+        cpu.status = initial_status;
+        cpu.dec(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], expected_mem);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0x02, 0, 0x01, 0;
         "dex no flags"
     )]
     #[test_case(
@@ -830,6 +866,32 @@ mod test {
         cpu.status = initial_status;
         cpu.dey();
         assert_eq!(cpu.register_y, expected_y);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0x01, 0, 0x02, 0;
+        "inc no flags"
+    )]
+    #[test_case(
+        0xFF, 0, 0x00, F_ZERO;
+        "inc sets zero flag"
+    )]
+    #[test_case(
+        0x7F, 0, 0x80, F_NEG;
+        "inc sets neg flag"
+    )]
+    #[test_case(
+        0x80, F_NEG, 0x81, F_NEG;
+        "inc keeps neg flag"
+    )]
+    fn test_inc(mem: u8, initial_status: u8, expected_mem: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x00] = 0x05;
+        cpu.memory[0x05] = mem;
+        cpu.status = initial_status;
+        cpu.inc(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], expected_mem);
         assert_eq!(cpu.status, expected_status);
     }
 
