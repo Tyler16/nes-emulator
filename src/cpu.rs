@@ -285,7 +285,30 @@ impl CPU {
         self.set_zero_and_neg_flags(self.register_y);
     }
 
-    fn lsr(&mut self, mode: &AddressingMode) {}
+    fn lsr(&mut self, mode: &AddressingMode) {
+        let mut initial_val: u8 = 0;
+        let mut final_val: u8 = 0;
+        match mode {
+            AddressingMode::Accumulator => {
+                initial_val = self.accumulator;
+                self.accumulator >>= 1;
+                final_val = self.accumulator;
+            }
+            _ => {
+                let addr: u16 = self.get_operand_address(mode);
+                initial_val = self.mem_read(addr);
+                final_val = initial_val >> 1;
+                self.mem_write(addr, final_val);
+            }
+        }
+        if initial_val & 0b0000_0001 != 0 {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.clear_flag(F_CARRY);
+        }
+        self.set_zero_and_neg_flags(final_val);
+    }
 
     fn ora(&mut self, mode: &AddressingMode) {}
 
@@ -297,9 +320,67 @@ impl CPU {
 
     fn plp(&mut self) {}
 
-    fn rol(&mut self, mode: &AddressingMode) {}
+    fn rol(&mut self, mode: &AddressingMode) {
+        let mut initial_val: u8 = 0;
+        let mut final_val: u8 = 0;
+        match mode {
+            AddressingMode::Accumulator => {
+                initial_val = self.accumulator;
+                self.accumulator <<= 1;
+                if self.get_flag(F_CARRY) {
+                    self.accumulator |= 0b0000_0001;
+                }
+                final_val = self.accumulator;
+            }
+            _ => {
+                let addr: u16 = self.get_operand_address(mode);
+                initial_val = self.mem_read(addr);
+                final_val = initial_val << 1;
+                if self.get_flag(F_CARRY) {
+                    final_val |= 0b0000_0001;
+                }
+                self.mem_write(addr, final_val);
+            }
+        }
+        if initial_val & 0b1000_0000 != 0 {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.clear_flag(F_CARRY);
+        }
+        self.set_zero_and_neg_flags(final_val);
+    }
 
-    fn ror(&mut self, mode: &AddressingMode) {}
+    fn ror(&mut self, mode: &AddressingMode) {
+        let mut initial_val: u8 = 0;
+        let mut final_val: u8 = 0;
+        match mode {
+            AddressingMode::Accumulator => {
+                initial_val = self.accumulator;
+                self.accumulator >>= 1;
+                if self.get_flag(F_CARRY) {
+                    self.accumulator |= 0b1000_0000;
+                }
+                final_val = self.accumulator;
+            }
+            _ => {
+                let addr: u16 = self.get_operand_address(mode);
+                initial_val = self.mem_read(addr);
+                final_val = initial_val >> 1;
+                if self.get_flag(F_CARRY) {
+                    final_val |= 0b1000_0000;
+                }
+                self.mem_write(addr, final_val);
+            }
+        }
+        if initial_val & 0b0000_0001 != 0 {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.clear_flag(F_CARRY);
+        }
+        self.set_zero_and_neg_flags(final_val);
+    }
 
     fn rti(&mut self) {}
 
@@ -747,6 +828,12 @@ mod test {
         cpu.asl(&AddressingMode::Accumulator);
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
+
+        cpu.memory[0x05] = accumulator;
+        cpu.memory[0x00] = 0x05;
+        cpu.asl(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], expected_acc);
+        assert_eq!(cpu.status, expected_status);
     }
 
     #[test_case(
@@ -1022,6 +1109,102 @@ mod test {
         cpu.memory[0x00] = register_y;
         cpu.ldy(&AddressingMode::Immediate);
         assert_eq!(cpu.register_y, expected_y);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0b0000_0010, 0, 0b0000_0001, 0;
+        "lsr no flags"
+    )]
+    #[test_case(
+        0b1000_0000, F_NEG, 0b0100_0000, 0;
+        "lsr clears neg flag"
+    )]
+    #[test_case(
+        0b0000_0001, 0, 0b0000_0000, F_ZERO | F_CARRY;
+        "lsr sets carry and zero flag"
+    )]
+    fn test_lsr(accumulator: u8, initial_status: u8, expected_acc: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.accumulator = accumulator;
+        cpu.status = initial_status;
+        cpu.lsr(&AddressingMode::Accumulator);
+        assert_eq!(cpu.accumulator, expected_acc);
+        assert_eq!(cpu.status, expected_status);
+
+        cpu.memory[0x05] = accumulator;
+        cpu.memory[0x00] = 0x05;
+        cpu.status = initial_status;
+        cpu.lsr(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], expected_acc);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0b0000_0001, 0, 0b0000_0010, 0;
+        "rol no flags"
+    )]
+    #[test_case(
+        0b0000_0001, F_CARRY, 0b0000_0011, 0;
+        "rol with carry flag"
+    )]
+    #[test_case(
+        0b1000_0001, F_NEG, 0b0000_0010, F_CARRY;
+        "rol sets carry flag"
+    )]
+    #[test_case(
+        0b1000_0000, F_NEG, 0b0000_0000, F_ZERO | F_CARRY;
+        "rol sets zero flag"
+    )]
+    #[test_case(
+        0b0100_0000, 0, 0b1000_0000, F_NEG;
+        "rol sets neg flag"
+    )]
+    fn test_rol(accumulator: u8, initial_status: u8, expected_acc: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.accumulator = accumulator;
+        cpu.status = initial_status;
+        cpu.rol(&AddressingMode::Accumulator);
+        assert_eq!(cpu.accumulator, expected_acc);
+        assert_eq!(cpu.status, expected_status);
+
+        cpu.memory[0x05] = accumulator;
+        cpu.memory[0x00] = 0x05;
+        cpu.status = initial_status;
+        cpu.rol(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], expected_acc);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0b0000_0010, 0, 0b0000_0001, 0;
+        "ror no flags"
+    )]
+    #[test_case(
+        0b0000_0010, F_CARRY, 0b1000_0001, F_NEG;
+        "ror with carry flag"
+    )]
+    #[test_case(
+        0b1000_0001, F_NEG, 0b0100_0000, F_CARRY;
+        "ror sets carry flag"
+    )]
+    #[test_case(
+        0b0000_0001, 0, 0b0000_0000, F_ZERO | F_CARRY;
+        "ror sets zero flag"
+    )]
+    fn test_ror(accumulator: u8, initial_status: u8, expected_acc: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.accumulator = accumulator;
+        cpu.status = initial_status;
+        cpu.ror(&AddressingMode::Accumulator);
+        assert_eq!(cpu.accumulator, expected_acc);
+        assert_eq!(cpu.status, expected_status);
+
+        cpu.memory[0x05] = accumulator;
+        cpu.memory[0x00] = 0x05;
+        cpu.status = initial_status;
+        cpu.ror(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], expected_acc);
         assert_eq!(cpu.status, expected_status);
     }
 
