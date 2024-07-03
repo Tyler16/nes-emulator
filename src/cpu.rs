@@ -163,8 +163,8 @@ impl CPU {
 
     fn and(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
-        self.accumulator = self.mem_read(addr) & self.accumulator;
-
+        let operand: u8 = self.mem_read(addr);
+        self.accumulator &= operand;
         self.set_zero_and_neg_flags(self.accumulator);
     }
 
@@ -235,7 +235,12 @@ impl CPU {
         self.set_zero_and_neg_flags(self.register_y);
     }
 
-    fn eor(&mut self, mode: &AddressingMode) {}
+    fn eor(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr);
+        self.accumulator ^= operand;
+        self.set_zero_and_neg_flags(self.accumulator);
+    }
 
     fn inc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
@@ -310,7 +315,12 @@ impl CPU {
         self.set_zero_and_neg_flags(final_val);
     }
 
-    fn ora(&mut self, mode: &AddressingMode) {}
+    fn ora(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr);
+        self.accumulator |= operand;
+        self.set_zero_and_neg_flags(self.accumulator);
+    }
 
     fn pha(&mut self) {}
 
@@ -957,6 +967,27 @@ mod test {
     }
 
     #[test_case(
+        0b0000_0101, 0b0000_1100, 0b0000_1001, 0;
+        "eor no flags"
+    )]
+    #[test_case(
+        0b0000_0100, 0b0000_0100, 0b0000_0000, F_ZERO;
+        "eor sets zero flag"
+    )]
+    #[test_case(
+        0b0000_0001, 0b1000_0001, 0b1000_0000, F_NEG;
+        "eor sets neg flag"
+    )]
+    fn test_eor(accumulator: u8, operand: u8, expected_acc: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.accumulator = accumulator;
+        cpu.memory[0x00] = operand;
+        cpu.eor(&AddressingMode::Immediate);
+        assert_eq!(cpu.accumulator, expected_acc);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
         0x01, 0, 0x02, 0;
         "inc no flags"
     )]
@@ -1137,6 +1168,28 @@ mod test {
         cpu.status = initial_status;
         cpu.lsr(&AddressingMode::ZeroPage);
         assert_eq!(cpu.memory[0x05], expected_acc);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0b0000_0101, 0b0000_1100, 0, 0b0000_1101, 0;
+        "ora no flags"
+    )]
+    #[test_case(
+        0b0000_0000, 0b0000_0000, F_ZERO, 0b0000_0000, F_ZERO;
+        "ora keeps zero flag"
+    )]
+    #[test_case(
+        0b0000_0001, 0b1000_0001, 0, 0b1000_0001, F_NEG;
+        "ora sets neg flag"
+    )]
+    fn test_ora(accumulator: u8, operand: u8, initial_status: u8, expected_acc: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.accumulator = accumulator;
+        cpu.memory[0x00] = operand;
+        cpu.status = initial_status;
+        cpu.ora(&AddressingMode::Immediate);
+        assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
     }
 
