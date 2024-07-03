@@ -478,25 +478,27 @@ impl CPU {
 
     fn tax(&mut self) {
         self.register_x = self.accumulator;
-                    
         self.set_zero_and_neg_flags(self.register_x);
     }
 
     fn tay(&mut self) {
         self.register_y = self.accumulator;
-                    
         self.set_zero_and_neg_flags(self.register_y);
     }
 
-    fn tsx(&mut self) {}
+    fn tsx(&mut self) {
+        self.register_x = self.stack_ptr;
+        self.set_zero_and_neg_flags(self.register_x);
+    }
 
     fn txa(&mut self) {
         self.accumulator = self.register_x;
-                    
         self.set_zero_and_neg_flags(self.accumulator);
     }
 
-    fn txs(&mut self) {}
+    fn txs(&mut self) {
+        self.stack_ptr = self.register_x;
+    }
 
     fn tya(&mut self) {
         self.accumulator = self.register_y;
@@ -1572,6 +1574,26 @@ mod test {
 
     #[test_case(
         0x01, 0x01, 0;
+        "tsx no flags"
+    )]
+    #[test_case(
+        0x00, 0x00, F_ZERO;
+        "tsx sets zero flag"
+    )]
+    #[test_case(
+        0x80, 0x80, F_NEG;
+        "tsx sets neg flag"
+    )]
+    fn test_tsx(stack_ptr: u8, expected_x: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.stack_ptr = stack_ptr;
+        cpu.tsx();
+        assert_eq!(cpu.register_x, expected_x);
+        assert_eq!(cpu.status, expected_status)
+    }
+
+    #[test_case(
+        0x01, 0x01, 0;
         "txa no flags"
     )]
     #[test_case(
@@ -1588,6 +1610,14 @@ mod test {
         cpu.txa();
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status)
+    }
+
+    #[test]
+    fn test_txs() {
+        let mut cpu: CPU = CPU::new();
+        cpu.register_x = 0x05;
+        cpu.txs();
+        assert_eq!(cpu.stack_ptr, 0x05);
     }
 
     #[test_case(
