@@ -112,6 +112,16 @@ impl CPU {
         }
     }
 
+    fn push_stack(&mut self, val: u8) {
+        self.mem_write(0x0100 | self.stack_ptr as u16, val);
+        self.stack_ptr += 1;
+    }
+
+    fn pull_stack(&mut self) -> u8 {
+        self.stack_ptr -= 1;
+        return self.mem_read(0x0100 | self.stack_ptr as u16);
+    }
+
     fn set_flag(&mut self, flag: u8) {
         self.status = self.status | flag;
     }
@@ -361,13 +371,10 @@ impl CPU {
         self.set_zero_and_neg_flags(self.accumulator);
     }
 
-    fn pha(&mut self) {}
-
-    fn php(&mut self) {}
-
-    fn pla(&mut self) {}
-
-    fn plp(&mut self) {}
+    fn pla(&mut self) {
+        self.accumulator = self.pull_stack();
+        self.set_zero_and_neg_flags(self.accumulator);
+    }
 
     fn rol(&mut self, mode: &AddressingMode) {
         let mut initial_val: u8 = 0;
@@ -576,10 +583,10 @@ impl CPU {
                 0x4A | 0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
                 0xEA => {},
                 0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => self.ora(&opcode.mode),
-                0x48 => self.pha(),
-                0x08 => self.php(),
+                0x48 => self.push_stack(self.accumulator),
+                0x08 => self.push_stack(self.status),
                 0x68 => self.pla(),
-                0x28 => self.plp(),
+                0x28 => self.status = self.pull_stack(),
                 0x2A | 0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
                 0x6A | 0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
                 0x40 => self.rti(),
@@ -724,6 +731,24 @@ mod test {
         cpu.memory[(mem_addr as u16).wrapping_add(1) as usize] = mem1;
         let res: u16 = cpu.get_operand_address(mode);
         assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_push() {
+        let mut cpu: CPU = CPU::new();
+        cpu.push_stack(0x05);
+        assert_eq!(cpu.stack_ptr, 0x01);
+        assert_eq!(cpu.memory[0x0100], 0x05);
+    }
+
+    #[test]
+    fn test_pull() {
+        let mut cpu: CPU = CPU::new();
+        cpu.stack_ptr = 0x01;
+        cpu.memory[0x0100] = 0x05;
+        let res: u8 = cpu.pull_stack();
+        assert_eq!(cpu.stack_ptr, 0x00);
+        assert_eq!(res, 0x05);
     }
 
     #[test_case(
@@ -1301,6 +1326,17 @@ mod test {
         cpu.ora(&AddressingMode::Immediate);
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test]
+    fn test_pla() {
+        let mut cpu: CPU = CPU::new();
+        cpu.stack_ptr = 0x01;
+        cpu.memory[0x0100] = 0x05;
+        cpu.pla();
+        assert_eq!(cpu.accumulator, 0x05);
+        assert_eq!(cpu.stack_ptr, 0x00);
+        assert_eq!(cpu.status, 0);
     }
 
     #[test_case(
