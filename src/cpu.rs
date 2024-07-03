@@ -210,11 +210,50 @@ impl CPU {
 
     fn branch_on_clear(&mut self, flag: u8) {}
 
-    fn cmp(&mut self, mode: &AddressingMode) {}
+    fn cmp(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let val: i8 = self.mem_read(addr) as i8;
+        if self.accumulator as i8 > val {
+            self.set_flag(F_CARRY);
+        }
+        else if self.accumulator as i8 == val {
+            self.set_flag(F_CARRY);
+            self.set_flag(F_ZERO);
+        }
+        else {
+            self.set_flag(F_NEG);
+        }
+    }
 
-    fn cpx(&mut self, mode: &AddressingMode) {}
+    fn cpx(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let val: i8 = self.mem_read(addr) as i8;
+        if self.register_x as i8 > val {
+            self.set_flag(F_CARRY);
+        }
+        else if self.register_x as i8 == val {
+            self.set_flag(F_CARRY);
+            self.set_flag(F_ZERO);
+        }
+        else {
+            self.set_flag(F_NEG);
+        }
+    }
 
-    fn cpy(&mut self, mode: &AddressingMode) {}
+    fn cpy(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let val: i8 = self.mem_read(addr) as i8;
+        if self.register_y as i8 > val {
+            self.set_flag(F_CARRY);
+        }
+        else if self.register_y as i8 == val {
+            self.set_flag(F_CARRY);
+            self.set_flag(F_ZERO);
+        }
+        else {
+            self.set_flag(F_NEG);
+        }
+    }
 
     fn dec(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
@@ -862,11 +901,11 @@ mod test {
         0b0100_0001, 0b0100_0001, F_OVERFLOW;
         "bit sets overflow flag"
     )]
-    fn test_bit(accumulator: u8, memory: u8, expected_status: u8) {
+    fn test_bit(accumulator: u8, operand: u8, expected_status: u8) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
         cpu.memory[0x00] = 0x05;
-        cpu.memory[0x05] = memory;
+        cpu.memory[0x05] = operand;
         cpu.bit(&AddressingMode::ZeroPage);
         assert_eq!(cpu.status, expected_status);
     }
@@ -876,6 +915,66 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0x00]);
         assert_eq!(cpu.status, F_BRK);
+    }
+
+    #[test_case(
+        0x02, 0x01, F_CARRY;
+        "cmp greater"
+    )]
+    #[test_case(
+        0x01, 0x01, F_CARRY | F_ZERO;
+        "cmp equal"
+    )]
+    #[test_case(
+        0xFF, 0x01, F_NEG;
+        "cmp less"
+    )]
+    fn test_cmp(accumulator: u8, operand: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.accumulator = accumulator;
+        cpu.memory[0x00] = operand;
+        cpu.cmp(&AddressingMode::Immediate);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0x02, 0x01, F_CARRY;
+        "cpx greater"
+    )]
+    #[test_case(
+        0x01, 0x01, F_CARRY | F_ZERO;
+        "cpx equal"
+    )]
+    #[test_case(
+        0xFF, 0x01, F_NEG;
+        "cpx less"
+    )]
+    fn test_cpx(register_x: u8, operand: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.register_x = register_x;
+        cpu.memory[0x00] = operand;
+        cpu.cpx(&AddressingMode::Immediate);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0x02, 0x01, F_CARRY;
+        "cpy greater"
+    )]
+    #[test_case(
+        0x01, 0x01, F_CARRY | F_ZERO;
+        "cpy equal"
+    )]
+    #[test_case(
+        0xFF, 0x01, F_NEG;
+        "cpy less"
+    )]
+    fn test_cpy(register_y: u8, operand: u8, expected_status: u8) {
+        let mut cpu: CPU = CPU::new();
+        cpu.register_y = register_y;
+        cpu.memory[0x00] = operand;
+        cpu.cpy(&AddressingMode::Immediate);
+        assert_eq!(cpu.status, expected_status);
     }
 
     #[test_case(
