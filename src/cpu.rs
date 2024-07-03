@@ -461,11 +461,20 @@ impl CPU {
         self.set_zero_and_neg_flags(self.accumulator);
     }
 
-    fn sta(&mut self, mode: &AddressingMode) {}
+    fn sta(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        self.mem_write(addr, self.accumulator);
+    }
     
-    fn stx(&mut self, mode: &AddressingMode) {}
+    fn stx(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_x);
+    }
 
-    fn sty(&mut self, mode: &AddressingMode) {}
+    fn sty(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_y);
+    }
 
     fn tax(&mut self) {
         self.register_x = self.accumulator;
@@ -1492,6 +1501,33 @@ mod test {
         assert!(cpu.status & F_NEG == F_NEG);
         assert!(cpu.status & F_OVERFLOW == F_OVERFLOW);
         assert!(cpu.status & F_CARRY == F_CARRY);
+    }
+
+    #[test]
+    fn test_sta() {
+        let mut cpu: CPU = CPU::new();
+        cpu.accumulator = 0x01;
+        cpu.memory[0x00] = 0x05;
+        cpu.sta(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], 0x01)
+    }
+
+    #[test]
+    fn test_stx() {
+        let mut cpu: CPU = CPU::new();
+        cpu.register_x = 0x01;
+        cpu.memory[0x00] = 0x05;
+        cpu.stx(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], 0x01)
+    }
+
+    #[test]
+    fn test_sty() {
+        let mut cpu: CPU = CPU::new();
+        cpu.register_y = 0x01;
+        cpu.memory[0x00] = 0x05;
+        cpu.sty(&AddressingMode::ZeroPage);
+        assert_eq!(cpu.memory[0x05], 0x01)
     }
 
     #[test_case(
