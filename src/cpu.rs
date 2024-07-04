@@ -6,6 +6,8 @@ use crate::opcodes::AddressingMode;
 const MEM_SIZE: usize = 0x10000;
 const PRG_REF: u16 = 0xFFFC;
 const PRG_START: u16 = 0x8000;
+const STACK_START: u8 = 0x00FF;
+const STACK_END: u16 = 0x0100;
 
 // Flags
 const F_NEG: u8 = 0b1000_0000;
@@ -61,7 +63,7 @@ impl CPU {
 
     pub fn new() -> Self {
         CPU {
-            stack_ptr: 0,
+            stack_ptr: STACK_START,
             accumulator: 0,
             register_x: 0,
             register_y: 0,
@@ -113,13 +115,13 @@ impl CPU {
     }
 
     fn push_stack(&mut self, val: u8) {
-        self.mem_write(0x0100 | self.stack_ptr as u16, val);
-        self.stack_ptr += 1;
+        self.mem_write(STACK_END | self.stack_ptr as u16, val);
+        self.stack_ptr -= 1;
     }
 
     fn pull_stack(&mut self) -> u8 {
-        self.stack_ptr -= 1;
-        return self.mem_read(0x0100 | self.stack_ptr as u16);
+        self.stack_ptr += 1;
+        return self.mem_read(STACK_END | self.stack_ptr as u16);
     }
 
     fn set_flag(&mut self, flag: u8) {
@@ -438,7 +440,11 @@ impl CPU {
         self.set_zero_and_neg_flags(final_val);
     }
 
-    fn rti(&mut self) {}
+    fn rti(&mut self) {
+        self.status = self.pull_stack();
+        self.program_counter = self.pull_stack() as u16;
+        self.program_counter |= (self.pull_stack() as u16) << 8
+    }
 
     fn rts(&mut self) {}
 
@@ -737,17 +743,17 @@ mod test {
     fn test_push() {
         let mut cpu: CPU = CPU::new();
         cpu.push_stack(0x05);
-        assert_eq!(cpu.stack_ptr, 0x01);
-        assert_eq!(cpu.memory[0x0100], 0x05);
+        assert_eq!(cpu.stack_ptr, 0xFE);
+        assert_eq!(cpu.memory[0x01FF], 0x05);
     }
 
     #[test]
     fn test_pull() {
         let mut cpu: CPU = CPU::new();
-        cpu.stack_ptr = 0x01;
-        cpu.memory[0x0100] = 0x05;
+        cpu.stack_ptr = 0xFE;
+        cpu.memory[0x01FF] = 0x05;
         let res: u8 = cpu.pull_stack();
-        assert_eq!(cpu.stack_ptr, 0x00);
+        assert_eq!(cpu.stack_ptr, 0xFF);
         assert_eq!(res, 0x05);
     }
 
@@ -1328,15 +1334,38 @@ mod test {
         assert_eq!(cpu.status, expected_status);
     }
 
-    #[test]
-    fn test_pla() {
+    #[test_case(
+        0x05, 0x05, 0;
+        "pla no flags"
+    )]
+    #[test_case(
+        0x00, 0x00, F_ZERO;
+        "pla sets zero flag"
+    )]
+    #[test_case(
+        0x80, 0x80, F_NEG;
+        "pla sets neg flag"
+    )]
+    fn test_pla(stack: u8, expected_acc: u8, expected_status: u8) {
         let mut cpu: CPU = CPU::new();
-        cpu.stack_ptr = 0x01;
-        cpu.memory[0x0100] = 0x05;
+        cpu.stack_ptr = 0xFE;
+        cpu.memory[0x01FF] = stack;
         cpu.pla();
-        assert_eq!(cpu.accumulator, 0x05);
-        assert_eq!(cpu.stack_ptr, 0x00);
-        assert_eq!(cpu.status, 0);
+        assert_eq!(cpu.accumulator, expected_acc);
+        assert_eq!(cpu.stack_ptr, 0xFF);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test]
+    fn test_rti() {
+        let mut cpu: CPU = CPU::new();
+        cpu.stack_ptr = 0xFC;
+        cpu.memory[0x01FF] = 0x80;
+        cpu.memory[0x01FE] = 0x00;
+        cpu.memory[0x01FD] = F_CARRY | F_NEG;
+        cpu.rti();
+        assert_eq!(cpu.program_counter, 0x8000);
+        assert_eq!(cpu.status, F_CARRY | F_NEG);
     }
 
     #[test_case(
