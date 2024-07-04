@@ -218,9 +218,25 @@ impl CPU {
         self.set_zero_and_neg_flags(res);
     }
 
-    fn branch_on_set(&mut self, flag: u8) {}
+    fn branch_on_set(&mut self, flag: u8) {
+        if !self.get_flag(flag) {
+            return;
+        }
+        let operand: i8 = self.mem_read(self.program_counter) as i8;
+        self.program_counter = self.program_counter
+                                    .wrapping_add(1)
+                                    .wrapping_add(operand as u16);
+    }
 
-    fn branch_on_clear(&mut self, flag: u8) {}
+    fn branch_on_clear(&mut self, flag: u8) {
+        if self.get_flag(flag) {
+            return;
+        }
+        let operand: i8 = self.mem_read(self.program_counter) as i8;
+        self.program_counter = self.program_counter
+                                    .wrapping_add(1)
+                                    .wrapping_add(operand as u16);
+    }
 
     fn cmp(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
@@ -958,6 +974,48 @@ mod test {
         cpu.memory[0x05] = operand;
         cpu.bit(&AddressingMode::ZeroPage);
         assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test_case(
+        0x05, F_CARRY, 0x8006;
+        "Branches when flag set"
+    )]
+    #[test_case(
+        0x05, 0, 0x8000;
+        "No branch when flag clear"
+    )]
+    #[test_case(
+        -0x05, F_CARRY, 0x7FFC;
+        "Negative branches"
+    )]
+    fn test_branch_on_set(offset: i8, initial_status: u8, expected_pc: u16) {
+        let mut cpu: CPU = CPU::new();
+        cpu.program_counter = PRG_START;
+        cpu.memory[PRG_START as usize] = offset as u8;
+        cpu.status = initial_status;
+        cpu.branch_on_set(F_CARRY);
+        assert_eq!(cpu.program_counter, expected_pc);
+    }
+
+    #[test_case(
+        0x05, 0, 0x8006;
+        "Branches when flag clear"
+    )]
+    #[test_case(
+        0x05, F_CARRY, 0x8000;
+        "No branch when flag set"
+    )]
+    #[test_case(
+        -0x05, 0, 0x7FFC;
+        "Negative branches"
+    )]
+    fn test_branch_on_clear(offset: i8, initial_status: u8, expected_pc: u16) {
+        let mut cpu: CPU = CPU::new();
+        cpu.program_counter = PRG_START;
+        cpu.memory[PRG_START as usize] = offset as u8;
+        cpu.status = initial_status;
+        cpu.branch_on_clear(F_CARRY);
+        assert_eq!(cpu.program_counter, expected_pc);
     }
 
     #[test]
