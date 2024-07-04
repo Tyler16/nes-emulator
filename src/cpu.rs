@@ -314,11 +314,15 @@ impl CPU {
 
     fn jmp(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
-
         self.program_counter = addr;
     }
 
-    fn jsr(&mut self) {}
+    fn jsr(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Absolute);
+        self.push_stack((self.program_counter >> 8) as u8);
+        self.push_stack((self.program_counter + 1) as u8);
+        self.program_counter = addr;
+    }
 
     fn lda(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
@@ -443,10 +447,14 @@ impl CPU {
     fn rti(&mut self) {
         self.status = self.pull_stack();
         self.program_counter = self.pull_stack() as u16;
-        self.program_counter |= (self.pull_stack() as u16) << 8
+        self.program_counter |= (self.pull_stack() as u16) << 8;
     }
 
-    fn rts(&mut self) {}
+    fn rts(&mut self) {
+        self.program_counter = self.pull_stack() as u16;
+        self.program_counter |= (self.pull_stack() as u16) << 8;
+        self.program_counter += 1;
+    }
 
     // todo
     fn sbc(&mut self, mode: &AddressingMode) {
@@ -1205,23 +1213,42 @@ mod test {
     }
 
     #[test]
-    fn test_jmp_absolute() {
+    fn test_jmp() {
         let mut cpu: CPU = CPU::new();
+        cpu.memory[0x00] = 0x12;
+        cpu.memory[0x01] = 0x34;
+        cpu.jmp(&AddressingMode::Absolute);
+        assert_eq!(cpu.program_counter, 0x3412);
+    }
 
+    #[test]
+    fn test_jmp_running() {
+        let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0x4C, 0x05, 0x80, 0xA9, 0xAA, 0xA2, 0x11, 0x00]);
         assert_eq!(cpu.register_x, 0x11);
         assert_eq!(cpu.accumulator, 0);
     }
 
     #[test]
-    fn test_jmp_indirect() {
+    fn test_jsr() {
         let mut cpu: CPU = CPU::new();
+        cpu.program_counter = 0x1234;
+        cpu.memory[0x1234 as usize] = 0x56;
+        cpu.memory[0x1235 as usize] = 0x78;
+        cpu.jsr();
+        assert_eq!(cpu.program_counter, 0x7856);
+        assert_eq!(cpu.memory[0x01FF], 0x12);
+        assert_eq!(cpu.memory[0x01FE], 0x35);
+    }
 
-        cpu.memory[0x10] = 0x05;
-        cpu.memory[0x11] = 0x80;
-        cpu.load_and_run(vec![0x6C, 0x10, 0x00, 0xA9, 0xAA, 0xA2, 0x11, 0x00]);
-        assert_eq!(cpu.register_x, 0x11);
-        assert_eq!(cpu.accumulator, 0);
+    #[test]
+    fn test_jsr_and_rts() {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x2010] = 0xA9;
+        cpu.memory[0x2011] = 0x05;
+        cpu.memory[0x2012] = 0x60;
+        cpu.load_and_run(vec![0x20, 0x10, 0x20, 0x00]);
+        assert_eq!(cpu.accumulator, 0x05);
     }
 
     #[test_case(
@@ -1356,18 +1383,6 @@ mod test {
         assert_eq!(cpu.status, expected_status);
     }
 
-    #[test]
-    fn test_rti() {
-        let mut cpu: CPU = CPU::new();
-        cpu.stack_ptr = 0xFC;
-        cpu.memory[0x01FF] = 0x80;
-        cpu.memory[0x01FE] = 0x00;
-        cpu.memory[0x01FD] = F_CARRY | F_NEG;
-        cpu.rti();
-        assert_eq!(cpu.program_counter, 0x8000);
-        assert_eq!(cpu.status, F_CARRY | F_NEG);
-    }
-
     #[test_case(
         0b0000_0001, 0, 0b0000_0010, 0;
         "rol no flags"
@@ -1434,6 +1449,28 @@ mod test {
         cpu.ror(&AddressingMode::ZeroPage);
         assert_eq!(cpu.memory[0x05], expected_acc);
         assert_eq!(cpu.status, expected_status);
+    }
+
+    #[test]
+    fn test_rti() {
+        let mut cpu: CPU = CPU::new();
+        cpu.stack_ptr = 0xFC;
+        cpu.memory[0x01FF] = 0x80;
+        cpu.memory[0x01FE] = 0x03;
+        cpu.memory[0x01FD] = F_CARRY | F_NEG;
+        cpu.rti();
+        assert_eq!(cpu.program_counter, 0x8003);
+        assert_eq!(cpu.status, F_CARRY | F_NEG);
+    }
+
+    #[test]
+    fn test_rts() {
+        let mut cpu: CPU = CPU::new();
+        cpu.stack_ptr = 0xFD;
+        cpu.memory[0x01FF] = 0x80;
+        cpu.memory[0x01FE] = 0x03;
+        cpu.rts();
+        assert_eq!(cpu.program_counter, 0x8004);
     }
 
     // Todo
