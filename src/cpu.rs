@@ -116,11 +116,11 @@ impl CPU {
 
     fn push_stack(&mut self, val: u8) {
         self.mem_write(STACK_END | self.stack_ptr as u16, val);
-        self.stack_ptr -= 1;
+        self.stack_ptr = self.stack_ptr.wrapping_sub(1);
     }
 
     fn pull_stack(&mut self) -> u8 {
-        self.stack_ptr += 1;
+        self.stack_ptr = self.stack_ptr.wrapping_add(1);
         return self.mem_read(STACK_END | self.stack_ptr as u16);
     }
 
@@ -151,26 +151,34 @@ impl CPU {
         }
     }
 
+    fn add_to_acc(&mut self, operand: u8) {
+        let sum: u16 = self.accumulator as u16
+            + operand as u16
+            + (if self.get_flag(F_CARRY) {
+                1
+            } else {
+                0
+            }) as u16;
+        if sum > 0xFF {
+            self.set_flag(F_CARRY);
+        } else {
+            self.clear_flag(F_CARRY);
+        }
+        let result: u8 = sum as u8;
+
+        if (operand ^ result) & (self.accumulator ^ result) & 0x80 != 0 {
+            self.set_flag(F_OVERFLOW);
+        } else {
+            self.clear_flag(F_OVERFLOW);
+        }
+        self.accumulator = result;
+        self.set_zero_and_neg_flags(result);
+    }
+
     fn adc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let operand: u8 = self.mem_read(addr);
-        let prev_acc: u8 = self.accumulator;
-        let sum: u16 = self.accumulator as u16 + operand as u16 + self.get_flag(F_CARRY) as u16;
-        self.accumulator = sum as u8;
-
-        if sum > 0xFF {
-            self.set_flag(F_CARRY);
-        }
-        else {
-            self.clear_flag(F_CARRY)
-        }
-        if ((prev_acc ^ self.accumulator) & (operand ^ self.accumulator) & 0b1000_0000) != 0 {
-            self.set_flag(F_OVERFLOW);
-        }
-        else {
-            self.clear_flag(F_OVERFLOW);
-        }
-        self.set_zero_and_neg_flags(self.accumulator);
+        self.add_to_acc(operand);
     }
 
     fn and(&mut self, mode: &AddressingMode) {
@@ -469,33 +477,14 @@ impl CPU {
     fn rts(&mut self) {
         self.program_counter = self.pull_stack() as u16;
         self.program_counter |= (self.pull_stack() as u16) << 8;
-        self.program_counter += 1;
+        self.program_counter = self.program_counter.wrapping_add(1);
     }
 
     // todo
     fn sbc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
-        let mut operand: u8 = self.mem_read(addr);
-        if operand != 0 {
-            operand = !operand + 1;
-        }
-        let diff: u16 = (self.accumulator as u16 + operand as u16) - (!self.get_flag(F_CARRY) as u16);
-        let prev_acc: u8 = self.accumulator;
-        self.accumulator = diff as u8;
-
-        if diff > 0xFF {
-            self.clear_flag(F_CARRY);
-        }
-        else {
-            self.set_flag(F_CARRY)
-        }
-        if ((prev_acc ^ self.accumulator) & (operand ^ self.accumulator) & 0b1000_0000) != 0 {
-            self.set_flag(F_OVERFLOW);
-        }
-        else {
-            self.clear_flag(F_OVERFLOW);
-        }
-        self.set_zero_and_neg_flags(self.accumulator);
+        let operand: u8 = self.mem_read(addr);
+        self.add_to_acc((operand as i8).wrapping_neg().wrapping_sub(1) as u8);
     }
 
     fn sta(&mut self, mode: &AddressingMode) {
