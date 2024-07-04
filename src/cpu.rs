@@ -480,7 +480,6 @@ impl CPU {
         self.program_counter = self.program_counter.wrapping_add(1);
     }
 
-    // todo
     fn sbc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let operand: u8 = self.mem_read(addr);
@@ -1520,138 +1519,42 @@ mod test {
         assert_eq!(cpu.program_counter, 0x8004);
     }
 
-    // Todo
-    #[test]
-    fn test_sbc_immediate() {
+    #[test_case(
+        0x05, 0x01, 0, 0x03, F_CARRY;
+        "sbc no flags"
+    )]
+    #[test_case(
+        0x05, 0x01, F_CARRY, 0x04, F_CARRY;
+        "sbc carry flag set"
+    )]
+    #[test_case(
+        0x05, 0x05, F_CARRY, 0x00, F_ZERO | F_CARRY;
+        "sbc sets zero flag"
+    )]
+    #[test_case(
+        0x05, 0x06, F_CARRY, 0xFF, F_NEG;
+        "sbc sets neg flag"
+    )]
+    #[test_case(
+        0x80, 0x01, F_CARRY | F_NEG, 0x7F, F_OVERFLOW | F_CARRY;
+        "sbc sets overflow flag"
+    )]
+    #[test_case(
+        0x00, -0x01, F_CARRY, 0x01, 0;
+        "sbc subtracts negative"
+    )]
+    #[test_case(
+        0x7F, -0x01, F_CARRY, 0x80, F_OVERFLOW | F_NEG;
+        "sbc subtracts negative overflow"
+    )]
+    fn test_sbc(accumulator: u8, operand: i8, initial_status: u8, expected_acc: u8, expected_status: u8) {
         let mut cpu: CPU = CPU::new();
-        cpu.load_and_run(vec![0x00]);
-        cpu.reset();
-
-        // Test basic sub without carry
-        let acc_val: i8 = 5;
-        let operand: i8 = 1;
-        let res: i8 = 3;
-        cpu.accumulator = acc_val as u8;
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == 0);
-        assert!(cpu.status & F_NEG == 0);
-        assert!(cpu.status & F_OVERFLOW == 0);
-        assert!(cpu.status & F_CARRY == 0);
-
-        // Test basic sub with carry
-        let acc_val: i8 = 5;
-        let operand: i8 = 1;
-        let res: i8 = 4;
-        cpu.reset();
-        cpu.accumulator = acc_val as u8;
-        cpu.set_flag(F_CARRY);
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == 0);
-        assert!(cpu.status & F_NEG == 0);
-        assert!(cpu.status & F_OVERFLOW == 0);
-        assert!(cpu.status & F_CARRY == 0);
-
-        // Test F_ZERO
-        let acc_val: i8 = 5;
-        let operand: i8 = 4;
-        let res: i8 = 0;
-        cpu.reset();
-        cpu.accumulator = acc_val as u8;
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == F_ZERO);
-        assert!(cpu.status & F_NEG == 0);
-        assert!(cpu.status & F_OVERFLOW == 0);
-        assert!(cpu.status & F_CARRY == 0);
-
-        // Test F_ZERO with negatives
-        let acc_val: i8 = -2;
-        let operand: i8 = -3;
-        let res: i8 = 0;
-        cpu.reset();
-        cpu.accumulator = acc_val as u8;
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == F_ZERO);
-        assert!(cpu.status & F_NEG == 0);
-        assert!(cpu.status & F_OVERFLOW == 0);
-        assert!(cpu.status & F_CARRY == 0);
-
-        // Test F_NEG
-        let acc_val: i8 = -1;
-        let operand: i8 = 1;
-        let res: i8 = -3;
-        cpu.reset();
-        cpu.accumulator = acc_val as u8;
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == 0);
-        assert!(cpu.status & F_NEG == F_NEG);
-        assert!(cpu.status & F_OVERFLOW == 0);
-        assert!(cpu.status & F_CARRY == 0);
-
-        // Test F_NEG with positive accumulator
-        let acc_val: i8 = 1;
-        let operand: i8 = 2;
-        let res: i8 = -2;
-        cpu.reset();
-        cpu.accumulator = acc_val as u8;
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == 0);
-        assert!(cpu.status & F_NEG == F_NEG);
-        assert!(cpu.status & F_OVERFLOW == 0);
-        assert!(cpu.status & F_CARRY == F_CARRY);
-
-        // Test F_NEG with negative operand
-        let acc_val: i8 = -3;
-        let operand: i8 = -1;
-        let res: i8 = -3;
-        cpu.reset();
-        cpu.accumulator = acc_val as u8;
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == 0);
-        assert!(cpu.status & F_NEG == F_NEG);
-        assert!(cpu.status & F_OVERFLOW == 0);
-        assert!(cpu.status & F_CARRY == F_CARRY);
-
-        // Test F_OVERFLOW
-        let acc_val: i8 = -128;
-        let operand: i8 = 1;
-        let res: i8 = 126;
-        cpu.reset();
-        cpu.accumulator = acc_val as u8;
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == 0);
-        assert!(cpu.status & F_NEG == 0);
-        assert!(cpu.status & F_OVERFLOW == F_OVERFLOW);
-        assert!(cpu.status & F_CARRY == 0);
-
-        // Test F_OVERFLOW positive to negative
-        let acc_val: i8 = 127;
-        let operand: i8 = -2;
-        let res: i8 = -128;
-        cpu.reset();
-        cpu.accumulator = acc_val as u8;
-        cpu.load(vec![0xE9, operand as u8, 0x00]);
-        cpu.run();
-        assert_eq!(cpu.accumulator, res as u8);
-        assert!(cpu.status & F_ZERO == 0);
-        assert!(cpu.status & F_NEG == F_NEG);
-        assert!(cpu.status & F_OVERFLOW == F_OVERFLOW);
-        assert!(cpu.status & F_CARRY == F_CARRY);
+        cpu.accumulator = accumulator;
+        cpu.memory[0x00] = operand as u8;
+        cpu.status = initial_status;
+        cpu.sbc(&AddressingMode::Immediate);
+        assert_eq!(cpu.accumulator, expected_acc);
+        assert_eq!(cpu.status, expected_status);
     }
 
     #[test]
