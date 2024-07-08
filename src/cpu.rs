@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Add;
 use crate::opcodes;
 use crate::opcodes::AddressingMode;
 
@@ -29,7 +28,7 @@ pub struct CPU {
 }
 
 
-trait Mem {
+pub trait Mem {
     fn mem_read(&mut self, addr: u16) -> u8;
     fn mem_write(&mut self, addr: u16, data: u8);
     
@@ -555,6 +554,99 @@ impl CPU {
         let ref opcodes: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
 
         loop {
+            // Get current operation in program
+            let code: u8 = self.mem_read(self.program_counter);
+            self.program_counter += 1;
+            let program_counter_state: u16 = self.program_counter;
+            let opcode: &&opcodes::OpCode = opcodes.get(&code).expect(&format!("OpCode {:x} is not recognized", code));
+
+            // Run corresponding operation function
+            match code {
+                0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
+                0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
+                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
+                0x90 => self.branch_on_clear(F_CARRY),
+                0xB0 => self.branch_on_set(F_CARRY),
+                0xF0 => self.branch_on_set(F_ZERO),
+                0x24 | 0x2C => self.bit(&opcode.mode),
+                0x30 => self.branch_on_set(F_NEG),
+                0xD0 => self.branch_on_clear(F_ZERO),
+                0x10 => self.branch_on_clear(F_NEG),
+                0x00 => {
+                    self.set_flag(F_BRK);
+                    return;
+                },
+                0x50 => self.branch_on_clear(F_OVERFLOW),
+                0x70 => self.branch_on_set(F_OVERFLOW),
+                0x18 => self.clear_flag(F_CARRY),
+                0xD8 => self.clear_flag(F_DEC),
+                0x58 => self.clear_flag(F_INT),
+                0xB8 => self.clear_flag(F_OVERFLOW),
+                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => self.cmp(&opcode.mode),
+                0xE0 | 0xE4 | 0xEC => self.cpx(&opcode.mode),
+                0xC0 | 0xC4 | 0xCC => self.cpy(&opcode.mode),
+                0xC6 | 0xD6 | 0xCE | 0xDE => self.dec(&opcode.mode),
+                0xCA => self.dex(),
+                0x88 => self.dey(),
+                0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51 => self.eor(&opcode.mode),
+                0xE6 | 0xF6 | 0xEE | 0xFE => self.inc(&opcode.mode),
+                0xE8 => self.inx(),
+                0xC8 => self.iny(),
+                0x4C | 0x6c => self.jmp(&opcode.mode),
+                0x20 => self.jsr(),
+                0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
+                0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => self.ldx(&opcode.mode),
+                0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
+                0x4A | 0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
+                0xEA => {},
+                0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => self.ora(&opcode.mode),
+                0x48 => self.push_stack(self.accumulator),
+                0x08 => self.push_stack(self.status),
+                0x68 => self.pla(),
+                0x28 => self.status = self.pull_stack(),
+                0x2A | 0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
+                0x6A | 0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
+                0x40 => self.rti(),
+                0x60 => self.rts(),
+                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
+                0x38 => self.set_flag(F_CARRY),
+                0xF8 => self.set_flag(F_DEC),
+                0x78 => self.set_flag(F_INT),
+                0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),
+                0x86 | 0x96 | 0x8E => self.stx(&opcode.mode),
+                0x84 | 0x94 | 0x8C => self.sty(&opcode.mode),
+                0xAA => self.tax(),
+                0xA8 => self.tay(),
+                0xBA => self.tsx(),
+                0x8A => self.txa(),
+                0x9A => self.txs(),
+                0x98 => self.tya(),
+                _ => todo!(""),
+            }
+
+            if program_counter_state == self.program_counter {
+                self.program_counter += (opcode.len - 1) as u16;
+            }
+        }
+    }
+
+    pub fn load_snake(&mut self, program: Vec<u8>) {
+        self.memory[0x0600..(0x0600 + program.len())].copy_from_slice(&program[..]);
+        self.mem_write_u16(0xFFFC, 0x0600);
+    }
+
+    pub fn run_snake(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut CPU),
+    {
+        let ref opcodes: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
+
+        loop {
+            callback(self);
             // Get current operation in program
             let code: u8 = self.mem_read(self.program_counter);
             self.program_counter += 1;
