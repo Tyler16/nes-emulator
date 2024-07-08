@@ -115,12 +115,22 @@ impl CPU {
 
     fn push_stack(&mut self, val: u8) {
         self.mem_write(STACK_END | self.stack_ptr as u16, val);
-        self.stack_ptr = self.stack_ptr.wrapping_sub(1);
+        self.set_stack_ptr(self.stack_ptr.wrapping_sub(1));
+    }
+
+    fn push_stack_u16(&mut self, val: u16) {
+        self.push_stack((val >> 8) as u8);
+        self.push_stack(val as u8);
     }
 
     fn pull_stack(&mut self) -> u8 {
-        self.stack_ptr = self.stack_ptr.wrapping_add(1);
+        self.set_stack_ptr(self.stack_ptr.wrapping_add(1));
         return self.mem_read(STACK_END | self.stack_ptr as u16);
+    }
+
+    fn pull_stack_u16(&mut self) -> u16 {
+        let res: u16 = self.pull_stack() as u16;
+        return res | ((self.pull_stack() as u16) << 8);
     }
 
     fn set_flag(&mut self, flag: u8) {
@@ -150,6 +160,30 @@ impl CPU {
         }
     }
 
+    fn set_acc(&mut self, new_val: u8) {
+        self.accumulator = new_val;
+        self.set_zero_and_neg_flags(new_val);
+    }
+
+    fn set_reg_x(&mut self, new_val: u8) {
+        self.register_x = new_val;
+        self.set_zero_and_neg_flags(new_val);
+    }
+
+    fn set_reg_y(&mut self, new_val: u8) {
+        self.register_y = new_val;
+        self.set_zero_and_neg_flags(new_val);
+    }
+
+    fn set_stack_ptr(&mut self, new_val: u8) {
+        self.stack_ptr = new_val
+    }
+
+    fn write_and_set(&mut self, addr: u16, data: u8) {
+        self.mem_write(addr, data);
+        self.set_zero_and_neg_flags(data);
+    }
+
     fn add_to_acc(&mut self, operand: u8) {
         let sum: u16 = self.accumulator as u16
             + operand as u16
@@ -170,8 +204,7 @@ impl CPU {
         } else {
             self.clear_flag(F_OVERFLOW);
         }
-        self.accumulator = result;
-        self.set_zero_and_neg_flags(result);
+        self.set_acc(result);
     }
 
     fn adc(&mut self, mode: &AddressingMode) {
@@ -183,33 +216,32 @@ impl CPU {
     fn and(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let operand: u8 = self.mem_read(addr);
-        self.accumulator &= operand;
-        self.set_zero_and_neg_flags(self.accumulator);
+        self.set_acc(self.accumulator & operand);
     }
 
-    fn asl(&mut self, mode: &AddressingMode) {
-        let mut initial_val: u8 = 0;
-        let mut final_val: u8 = 0;
-        match mode {
-            AddressingMode::Accumulator => {
-                initial_val = self.accumulator;
-                self.accumulator <<= 1;
-                final_val = self.accumulator;
-            }
-            _ => {
-                let addr: u16 = self.get_operand_address(mode);
-                initial_val = self.mem_read(addr);
-                final_val = initial_val << 1;
-                self.mem_write(addr, final_val);
-            }
-        }
+    fn asl_acc(&mut self) {
+        let initial_val: u8 = self.accumulator;
         if initial_val & 0b1000_0000 != 0 {
             self.set_flag(F_CARRY);
         }
         else {
             self.clear_flag(F_CARRY);
         }
-        self.set_zero_and_neg_flags(final_val);
+        self.set_acc(self.accumulator << 1);
+    }
+
+    fn asl(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let initial_val = self.mem_read(addr);
+        let final_val = initial_val << 1;
+
+        if initial_val & 0b1000_0000 != 0 {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.clear_flag(F_CARRY);
+        }
+        self.write_and_set(addr, final_val);
     }
 
     fn bit(&mut self, mode: &AddressingMode) {
@@ -245,43 +277,13 @@ impl CPU {
                                     .wrapping_add(operand as u16);
     }
 
-    fn cmp(&mut self, mode: &AddressingMode) {
+    fn cmp(&mut self, mode: &AddressingMode, register: u8) {
         let addr: u16 = self.get_operand_address(mode);
         let val: i8 = self.mem_read(addr) as i8;
-        if self.accumulator as i8 > val {
+        if register as i8 > val {
             self.set_flag(F_CARRY);
         }
-        else if self.accumulator as i8 == val {
-            self.set_flag(F_CARRY);
-            self.set_flag(F_ZERO);
-        }
-        else {
-            self.set_flag(F_NEG);
-        }
-    }
-
-    fn cpx(&mut self, mode: &AddressingMode) {
-        let addr: u16 = self.get_operand_address(mode);
-        let val: i8 = self.mem_read(addr) as i8;
-        if self.register_x as i8 > val {
-            self.set_flag(F_CARRY);
-        }
-        else if self.register_x as i8 == val {
-            self.set_flag(F_CARRY);
-            self.set_flag(F_ZERO);
-        }
-        else {
-            self.set_flag(F_NEG);
-        }
-    }
-
-    fn cpy(&mut self, mode: &AddressingMode) {
-        let addr: u16 = self.get_operand_address(mode);
-        let val: i8 = self.mem_read(addr) as i8;
-        if self.register_y as i8 > val {
-            self.set_flag(F_CARRY);
-        }
-        else if self.register_y as i8 == val {
+        else if register as i8 == val {
             self.set_flag(F_CARRY);
             self.set_flag(F_ZERO);
         }
@@ -293,46 +295,35 @@ impl CPU {
     fn dec(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let val: u8 = self.mem_read(addr);
-        self.mem_write(addr, val.wrapping_sub(1));
-        self.set_zero_and_neg_flags(val.wrapping_sub(1));
+        self.write_and_set(addr, val.wrapping_sub(1));
     }
 
     fn dex(&mut self) {
-        self.register_x = self.register_x.wrapping_sub(1);
-
-        self.set_zero_and_neg_flags(self.register_x);
+        self.set_reg_x(self.register_x.wrapping_sub(1));
     }
 
     fn dey(&mut self) {
-        self.register_y = self.register_y.wrapping_sub(1);
-
-        self.set_zero_and_neg_flags(self.register_y);
+        self.set_reg_y(self.register_y.wrapping_sub(1));
     }
 
     fn eor(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let operand: u8 = self.mem_read(addr);
-        self.accumulator ^= operand;
-        self.set_zero_and_neg_flags(self.accumulator);
+        self.set_acc(self.accumulator ^ operand)
     }
 
     fn inc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let val: u8 = self.mem_read(addr);
-        self.mem_write(addr, val.wrapping_add(1));
-        self.set_zero_and_neg_flags(val.wrapping_add(1));
+        self.write_and_set(addr, val.wrapping_add(1));
     }
 
     fn inx(&mut self) {
-        self.register_x = self.register_x.wrapping_add(1);
-
-        self.set_zero_and_neg_flags(self.register_x);
+        self.set_reg_x(self.register_x.wrapping_add(1));
     }
 
     fn iny(&mut self) {
-        self.register_y = self.register_y.wrapping_add(1);
-
-        self.set_zero_and_neg_flags(self.register_y);
+        self.set_reg_y(self.register_y.wrapping_add(1));
     }
 
     fn jmp(&mut self, mode: &AddressingMode) {
@@ -342,140 +333,140 @@ impl CPU {
 
     fn jsr(&mut self) {
         let addr: u16 = self.get_operand_address(&AddressingMode::Absolute);
-        self.push_stack((self.program_counter >> 8) as u8);
-        self.push_stack((self.program_counter + 1) as u8);
+        self.push_stack_u16(self.program_counter + 1);
         self.program_counter = addr;
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
-        self.accumulator = self.mem_read(addr);
-
-        self.set_zero_and_neg_flags(self.accumulator);
+        let val: u8 = self.mem_read(addr);
+        self.set_acc(val);
     }
 
     fn ldx(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
-        self.register_x = self.mem_read(addr);
-
-        self.set_zero_and_neg_flags(self.register_x);
+        let val: u8 = self.mem_read(addr);
+        self.set_reg_x(val);
     }
 
     fn ldy(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
-        self.register_y = self.mem_read(addr);
+        let val: u8 = self.mem_read(addr);
+        self.set_reg_y(val);
+    }
 
-        self.set_zero_and_neg_flags(self.register_y);
+    fn lsr_acc(&mut self) {
+        if self.accumulator & 0b0000_0001 != 0 {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.clear_flag(F_CARRY);
+        }
+        self.set_acc(self.accumulator >> 1);
     }
 
     fn lsr(&mut self, mode: &AddressingMode) {
-        let mut initial_val: u8 = 0;
-        let mut final_val: u8 = 0;
-        match mode {
-            AddressingMode::Accumulator => {
-                initial_val = self.accumulator;
-                self.accumulator >>= 1;
-                final_val = self.accumulator;
-            }
-            _ => {
-                let addr: u16 = self.get_operand_address(mode);
-                initial_val = self.mem_read(addr);
-                final_val = initial_val >> 1;
-                self.mem_write(addr, final_val);
-            }
-        }
+        let addr: u16 = self.get_operand_address(mode);
+        let initial_val: u8 = self.mem_read(addr);
+        let final_val: u8 = initial_val >> 1;
+
         if initial_val & 0b0000_0001 != 0 {
             self.set_flag(F_CARRY);
         }
         else {
             self.clear_flag(F_CARRY);
         }
-        self.set_zero_and_neg_flags(final_val);
+        self.write_and_set(addr, final_val);
     }
 
     fn ora(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let operand: u8 = self.mem_read(addr);
-        self.accumulator |= operand;
-        self.set_zero_and_neg_flags(self.accumulator);
+        self.set_acc(self.accumulator | operand);
     }
 
     fn pla(&mut self) {
-        self.accumulator = self.pull_stack();
-        self.set_zero_and_neg_flags(self.accumulator);
+        let val: u8 = self.pull_stack();
+        self.set_acc(val);
+    }
+
+    fn rol_acc(&mut self) {
+        let prev_acc: u8 = self.accumulator;
+        if self.get_flag(F_CARRY) {
+            self.set_acc((self.accumulator << 1) | 0b0000_0001);
+        }
+        else {
+            self.set_acc(self.accumulator << 1);
+        }
+        if prev_acc & 0b1000_0000 != 0 {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.clear_flag(F_CARRY);
+        }
     }
 
     fn rol(&mut self, mode: &AddressingMode) {
-        let mut initial_val: u8 = 0;
-        let mut final_val: u8 = 0;
-        match mode {
-            AddressingMode::Accumulator => {
-                initial_val = self.accumulator;
-                self.accumulator <<= 1;
-                if self.get_flag(F_CARRY) {
-                    self.accumulator |= 0b0000_0001;
-                }
-                final_val = self.accumulator;
-            }
-            _ => {
-                let addr: u16 = self.get_operand_address(mode);
-                initial_val = self.mem_read(addr);
-                final_val = initial_val << 1;
-                if self.get_flag(F_CARRY) {
-                    final_val |= 0b0000_0001;
-                }
-                self.mem_write(addr, final_val);
-            }
+        let addr: u16 = self.get_operand_address(mode);
+        let initial_val: u8 = self.mem_read(addr);
+        let mut final_val: u8 = initial_val << 1;
+        if self.get_flag(F_CARRY) {
+            final_val |= 0b0000_0001;
         }
+
         if initial_val & 0b1000_0000 != 0 {
             self.set_flag(F_CARRY);
         }
         else {
             self.clear_flag(F_CARRY);
         }
-        self.set_zero_and_neg_flags(final_val);
+
+        self.write_and_set(addr, final_val);
+    }
+
+    fn ror_acc(&mut self) {
+        let prev_acc: u8 = self.accumulator;
+
+        if self.get_flag(F_CARRY) {
+            self.set_acc(self.accumulator >> 1 | 0b1000_0000);
+        }
+        else {
+            self.set_acc(self.accumulator >> 1);
+        }
+
+        if prev_acc & 0b0000_0001 != 0 {
+            self.set_flag(F_CARRY);
+        }
+        else {
+            self.clear_flag(F_CARRY);
+        }
     }
 
     fn ror(&mut self, mode: &AddressingMode) {
-        let mut initial_val: u8 = 0;
-        let mut final_val: u8 = 0;
-        match mode {
-            AddressingMode::Accumulator => {
-                initial_val = self.accumulator;
-                self.accumulator >>= 1;
-                if self.get_flag(F_CARRY) {
-                    self.accumulator |= 0b1000_0000;
-                }
-                final_val = self.accumulator;
-            }
-            _ => {
-                let addr: u16 = self.get_operand_address(mode);
-                initial_val = self.mem_read(addr);
-                final_val = initial_val >> 1;
-                if self.get_flag(F_CARRY) {
-                    final_val |= 0b1000_0000;
-                }
-                self.mem_write(addr, final_val);
-            }
+        let addr: u16 = self.get_operand_address(mode);
+        let initial_val: u8 = self.mem_read(addr);
+        let mut final_val: u8 = initial_val >> 1;
+        if self.get_flag(F_CARRY) {
+            final_val |= 0b1000_0000;
         }
+        
         if initial_val & 0b0000_0001 != 0 {
             self.set_flag(F_CARRY);
         }
         else {
             self.clear_flag(F_CARRY);
         }
-        self.set_zero_and_neg_flags(final_val);
+        
+        self.write_and_set(addr, final_val);
     }
 
     fn rti(&mut self) {
         self.status = self.pull_stack();
-        self.program_counter = self.pull_stack() as u16;
-        self.program_counter |= (self.pull_stack() as u16) << 8;
+        self.program_counter = self.pull_stack_u16();
     }
-
+    
     fn rts(&mut self) {
-        self.program_counter = self.pull_stack() as u16;
-        self.program_counter |= (self.pull_stack() as u16) << 8;
+        self.program_counter = self.pull_stack_u16();
         self.program_counter = self.program_counter.wrapping_add(1);
     }
 
@@ -498,36 +489,6 @@ impl CPU {
     fn sty(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         self.mem_write(addr, self.register_y);
-    }
-
-    fn tax(&mut self) {
-        self.register_x = self.accumulator;
-        self.set_zero_and_neg_flags(self.register_x);
-    }
-
-    fn tay(&mut self) {
-        self.register_y = self.accumulator;
-        self.set_zero_and_neg_flags(self.register_y);
-    }
-
-    fn tsx(&mut self) {
-        self.register_x = self.stack_ptr;
-        self.set_zero_and_neg_flags(self.register_x);
-    }
-
-    fn txa(&mut self) {
-        self.accumulator = self.register_x;
-        self.set_zero_and_neg_flags(self.accumulator);
-    }
-
-    fn txs(&mut self) {
-        self.stack_ptr = self.register_x;
-    }
-
-    fn tya(&mut self) {
-        self.accumulator = self.register_y;
-                    
-        self.set_zero_and_neg_flags(self.accumulator);
     }
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
@@ -564,7 +525,8 @@ impl CPU {
             match code {
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
-                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
+                0x0A => self.asl_acc(),
+                0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
                 0x90 => self.branch_on_clear(F_CARRY),
                 0xB0 => self.branch_on_set(F_CARRY),
                 0xF0 => self.branch_on_set(F_ZERO),
@@ -582,9 +544,9 @@ impl CPU {
                 0xD8 => self.clear_flag(F_DEC),
                 0x58 => self.clear_flag(F_INT),
                 0xB8 => self.clear_flag(F_OVERFLOW),
-                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => self.cmp(&opcode.mode),
-                0xE0 | 0xE4 | 0xEC => self.cpx(&opcode.mode),
-                0xC0 | 0xC4 | 0xCC => self.cpy(&opcode.mode),
+                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => self.cmp(&opcode.mode, self.accumulator),
+                0xE0 | 0xE4 | 0xEC => self.cmp(&opcode.mode, self.register_x),
+                0xC0 | 0xC4 | 0xCC => self.cmp(&opcode.mode, self.register_y),
                 0xC6 | 0xD6 | 0xCE | 0xDE => self.dec(&opcode.mode),
                 0xCA => self.dex(),
                 0x88 => self.dey(),
@@ -597,15 +559,18 @@ impl CPU {
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
                 0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => self.ldx(&opcode.mode),
                 0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
-                0x4A | 0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
+                0x4A => self.lsr_acc(),
+                0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
                 0xEA => {},
                 0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => self.ora(&opcode.mode),
                 0x48 => self.push_stack(self.accumulator),
                 0x08 => self.push_stack(self.status),
                 0x68 => self.pla(),
                 0x28 => self.status = self.pull_stack(),
-                0x2A | 0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
-                0x6A | 0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
+                0x2A => self.rol_acc(),
+                0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
+                0x6A => self.ror_acc(),
+                0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
                 0x40 => self.rti(),
                 0x60 => self.rts(),
                 0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
@@ -615,12 +580,12 @@ impl CPU {
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),
                 0x86 | 0x96 | 0x8E => self.stx(&opcode.mode),
                 0x84 | 0x94 | 0x8C => self.sty(&opcode.mode),
-                0xAA => self.tax(),
-                0xA8 => self.tay(),
-                0xBA => self.tsx(),
-                0x8A => self.txa(),
-                0x9A => self.txs(),
-                0x98 => self.tya(),
+                0xAA => self.set_reg_x(self.accumulator),
+                0xA8 => self.set_reg_y(self.accumulator),
+                0xBA => self.set_reg_x(self.stack_ptr),
+                0x8A => self.set_acc(self.register_x),
+                0x9A => self.set_stack_ptr(self.register_x),
+                0x98 => self.set_acc(self.register_y),
                 _ => todo!(""),
             }
 
@@ -657,7 +622,8 @@ impl CPU {
             match code {
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
-                0x0A | 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
+                0x0A => self.asl_acc(),
+                0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
                 0x90 => self.branch_on_clear(F_CARRY),
                 0xB0 => self.branch_on_set(F_CARRY),
                 0xF0 => self.branch_on_set(F_ZERO),
@@ -675,9 +641,9 @@ impl CPU {
                 0xD8 => self.clear_flag(F_DEC),
                 0x58 => self.clear_flag(F_INT),
                 0xB8 => self.clear_flag(F_OVERFLOW),
-                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => self.cmp(&opcode.mode),
-                0xE0 | 0xE4 | 0xEC => self.cpx(&opcode.mode),
-                0xC0 | 0xC4 | 0xCC => self.cpy(&opcode.mode),
+                0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => self.cmp(&opcode.mode, self.accumulator),
+                0xE0 | 0xE4 | 0xEC => self.cmp(&opcode.mode, self.register_x),
+                0xC0 | 0xC4 | 0xCC => self.cmp(&opcode.mode, self.register_y),
                 0xC6 | 0xD6 | 0xCE | 0xDE => self.dec(&opcode.mode),
                 0xCA => self.dex(),
                 0x88 => self.dey(),
@@ -690,15 +656,18 @@ impl CPU {
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
                 0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => self.ldx(&opcode.mode),
                 0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
-                0x4A | 0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
+                0x4A => self.lsr_acc(),
+                0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
                 0xEA => {},
                 0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => self.ora(&opcode.mode),
                 0x48 => self.push_stack(self.accumulator),
                 0x08 => self.push_stack(self.status),
                 0x68 => self.pla(),
                 0x28 => self.status = self.pull_stack(),
-                0x2A | 0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
-                0x6A | 0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
+                0x2A => self.rol_acc(),
+                0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
+                0x6A => self.ror_acc(),
+                0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
                 0x40 => self.rti(),
                 0x60 => self.rts(),
                 0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
@@ -708,12 +677,12 @@ impl CPU {
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),
                 0x86 | 0x96 | 0x8E => self.stx(&opcode.mode),
                 0x84 | 0x94 | 0x8C => self.sty(&opcode.mode),
-                0xAA => self.tax(),
-                0xA8 => self.tay(),
-                0xBA => self.tsx(),
-                0x8A => self.txa(),
-                0x9A => self.txs(),
-                0x98 => self.tya(),
+                0xAA => self.set_reg_x(self.accumulator),
+                0xA8 => self.set_reg_y(self.accumulator),
+                0xBA => self.set_reg_x(self.stack_ptr),
+                0x8A => self.set_acc(self.register_x),
+                0x9A => self.set_stack_ptr(self.register_x),
+                0x98 => self.set_acc(self.register_y),
                 _ => todo!(""),
             }
 
@@ -1020,7 +989,7 @@ mod test {
     fn test_asl(accumulator: u8, expected_acc: u8, expected_status: u8) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
-        cpu.asl(&AddressingMode::Accumulator);
+        cpu.asl_acc();
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
 
@@ -1121,47 +1090,7 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
         cpu.memory[0x00] = operand;
-        cpu.cmp(&AddressingMode::Immediate);
-        assert_eq!(cpu.status, expected_status);
-    }
-
-    #[test_case(
-        0x02, 0x01, F_CARRY;
-        "cpx greater"
-    )]
-    #[test_case(
-        0x01, 0x01, F_CARRY | F_ZERO;
-        "cpx equal"
-    )]
-    #[test_case(
-        0xFF, 0x01, F_NEG;
-        "cpx less"
-    )]
-    fn test_cpx(register_x: u8, operand: u8, expected_status: u8) {
-        let mut cpu: CPU = CPU::new();
-        cpu.register_x = register_x;
-        cpu.memory[0x00] = operand;
-        cpu.cpx(&AddressingMode::Immediate);
-        assert_eq!(cpu.status, expected_status);
-    }
-
-    #[test_case(
-        0x02, 0x01, F_CARRY;
-        "cpy greater"
-    )]
-    #[test_case(
-        0x01, 0x01, F_CARRY | F_ZERO;
-        "cpy equal"
-    )]
-    #[test_case(
-        0xFF, 0x01, F_NEG;
-        "cpy less"
-    )]
-    fn test_cpy(register_y: u8, operand: u8, expected_status: u8) {
-        let mut cpu: CPU = CPU::new();
-        cpu.register_y = register_y;
-        cpu.memory[0x00] = operand;
-        cpu.cpy(&AddressingMode::Immediate);
+        cpu.cmp(&AddressingMode::Immediate, accumulator);
         assert_eq!(cpu.status, expected_status);
     }
 
@@ -1465,7 +1394,7 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
         cpu.status = initial_status;
-        cpu.lsr(&AddressingMode::Accumulator);
+        cpu.lsr_acc();
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
 
@@ -1545,7 +1474,7 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
         cpu.status = initial_status;
-        cpu.rol(&AddressingMode::Accumulator);
+        cpu.rol_acc();
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
 
@@ -1577,7 +1506,7 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
         cpu.status = initial_status;
-        cpu.ror(&AddressingMode::Accumulator);
+        cpu.ror_acc();
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
 
@@ -1674,113 +1603,5 @@ mod test {
         cpu.memory[0x00] = 0x05;
         cpu.sty(&AddressingMode::ZeroPage);
         assert_eq!(cpu.memory[0x05], 0x01)
-    }
-
-    #[test_case(
-        0x01, 0x01, 0;
-        "tax no flags"
-    )]
-    #[test_case(
-        0x00, 0x00, F_ZERO;
-        "tax sets zero flag"
-    )]
-    #[test_case(
-        0x80, 0x80, F_NEG;
-        "tax sets neg flag"
-    )]
-    fn test_tax(accumulator: u8, expected_x: u8, expected_status: u8) {
-        let mut cpu: CPU = CPU::new();
-        cpu.accumulator = accumulator;
-        cpu.tax();
-        assert_eq!(cpu.register_x, expected_x);
-        assert_eq!(cpu.status, expected_status)
-    }
-
-    #[test_case(
-        0x01, 0x01, 0;
-        "tay no flags"
-    )]
-    #[test_case(
-        0x00, 0x00, F_ZERO;
-        "tay sets zero flag"
-    )]
-    #[test_case(
-        0x80, 0x80, F_NEG;
-        "tay sets neg flag"
-    )]
-    fn test_tay(accumulator: u8, expected_y: u8, expected_status: u8) {
-        let mut cpu: CPU = CPU::new();
-        cpu.accumulator = accumulator;
-        cpu.tay();
-        assert_eq!(cpu.register_y, expected_y);
-        assert_eq!(cpu.status, expected_status)
-    }
-
-    #[test_case(
-        0x01, 0x01, 0;
-        "tsx no flags"
-    )]
-    #[test_case(
-        0x00, 0x00, F_ZERO;
-        "tsx sets zero flag"
-    )]
-    #[test_case(
-        0x80, 0x80, F_NEG;
-        "tsx sets neg flag"
-    )]
-    fn test_tsx(stack_ptr: u8, expected_x: u8, expected_status: u8) {
-        let mut cpu: CPU = CPU::new();
-        cpu.stack_ptr = stack_ptr;
-        cpu.tsx();
-        assert_eq!(cpu.register_x, expected_x);
-        assert_eq!(cpu.status, expected_status)
-    }
-
-    #[test_case(
-        0x01, 0x01, 0;
-        "txa no flags"
-    )]
-    #[test_case(
-        0x00, 0x00, F_ZERO;
-        "txa sets zero flag"
-    )]
-    #[test_case(
-        0x80, 0x80, F_NEG;
-        "txa sets neg flag"
-    )]
-    fn test_txa(register_x: u8, expected_acc: u8, expected_status: u8) {
-        let mut cpu: CPU = CPU::new();
-        cpu.register_x = register_x;
-        cpu.txa();
-        assert_eq!(cpu.accumulator, expected_acc);
-        assert_eq!(cpu.status, expected_status)
-    }
-
-    #[test]
-    fn test_txs() {
-        let mut cpu: CPU = CPU::new();
-        cpu.register_x = 0x05;
-        cpu.txs();
-        assert_eq!(cpu.stack_ptr, 0x05);
-    }
-
-    #[test_case(
-        0x01, 0x01, 0;
-        "tya no flags"
-    )]
-    #[test_case(
-        0x00, 0x00, F_ZERO;
-        "tya sets zero flag"
-    )]
-    #[test_case(
-        0x80, 0x80, F_NEG;
-        "tya sets neg flag"
-    )]
-    fn test_tya(register_y: u8, expected_acc: u8, expected_status: u8) {
-        let mut cpu: CPU = CPU::new();
-        cpu.register_y = register_y;
-        cpu.tya();
-        assert_eq!(cpu.accumulator, expected_acc);
-        assert_eq!(cpu.status, expected_status)
     }
 }
