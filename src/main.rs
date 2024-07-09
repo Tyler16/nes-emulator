@@ -12,6 +12,9 @@ use sdl2::pixels::PixelFormatEnum;
 #[macro_use]
 extern crate lazy_static;
 
+#[macro_use]
+extern crate bitflags;
+
 fn color(byte: u8) -> Color {
     match byte {
         0 => sdl2::pixels::Color::BLACK,
@@ -127,6 +130,6 @@ fn main() {
             canvas.present();
         }
 
-        ::std::thread::sleep(std::time::Duration::new(0, 100));
+        ::std::thread::sleep(std::time::Duration::new(0, 1));
    });
 }
