@@ -803,6 +803,15 @@ mod test {
     }
 
     #[test]
+    fn test_push_u16() {
+        let mut cpu: CPU = CPU::new();
+        cpu.push_stack_u16(0x0102);
+        assert_eq!(cpu.stack_ptr, 0xFD);
+        assert_eq!(cpu.memory[0x01FF], 0x01);
+        assert_eq!(cpu.memory[0x01FE], 0x02);
+    }
+
+    #[test]
     fn test_pull() {
         let mut cpu: CPU = CPU::new();
         cpu.stack_ptr = 0xFE;
@@ -810,6 +819,17 @@ mod test {
         let res: u8 = cpu.pull_stack();
         assert_eq!(cpu.stack_ptr, 0xFF);
         assert_eq!(res, 0x05);
+    }
+
+    #[test]
+    fn test_pull_u16() {
+        let mut cpu: CPU = CPU::new();
+        cpu.stack_ptr = 0xFD;
+        cpu.memory[0x01FE] = 0x02;
+        cpu.memory[0x01FF] = 0x01;
+        let res: u16 = cpu.pull_stack_u16();
+        assert_eq!(cpu.stack_ptr, 0xFF);
+        assert_eq!(res, 0x0102);
     }
 
     #[test]
@@ -861,6 +881,37 @@ mod test {
         assert_eq!(cpu.accumulator, 0x05);
         assert_eq!(cpu.register_x, 0);
         assert_eq!(cpu.register_y, 0);
+    }
+
+    #[test_case(
+        0x01, CPUFlags::empty();
+        "no flags set positive"
+    )]
+    #[test_case(
+        0x00, CPUFlags::ZERO;
+        "zero flag set"
+    )]
+    #[test_case(
+        0x80, CPUFlags::NEG;
+        "neg flag set"
+    )]
+    fn test_set_zero_and_neg(val: u8, expected_status: CPUFlags) {
+        let mut cpu: CPU = CPU::new();
+        cpu.set_zero_and_neg_flags(val);
+        assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
+    }
+
+    #[test]
+    fn set_registers() {
+        let mut cpu: CPU = CPU::new();
+        cpu.set_acc(0x01);
+        assert_eq!(cpu.accumulator, 0x01);
+        cpu.set_reg_x(0x01);
+        assert_eq!(cpu.register_x, 0x01);
+        cpu.set_reg_y(0x01);
+        assert_eq!(cpu.register_y, 0x01);
+        cpu.set_stack_ptr(0x01);
+        assert_eq!(cpu.stack_ptr, 0x01);
     }
 
     #[test_case(
@@ -975,6 +1026,14 @@ mod test {
         cpu.memory[0x05] = operand;
         cpu.bit(&AddressingMode::ZeroPage);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
+    }
+
+    #[test]
+    fn test_branch() {
+        let mut cpu: CPU = CPU::new();
+        cpu.memory[0x00] = 0x05;
+        cpu.branch(true);
+        assert_eq!(cpu.program_counter, 0x06);
     }
 
     #[test]
