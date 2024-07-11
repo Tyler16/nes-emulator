@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use crate::opcodes;
 use crate::opcodes::AddressingMode;
-use crate::bus;
+use crate::bus::Bus;
 use crate::mem::Mem;
 
-const MEM_SIZE: usize = 0x10000;
 const PRG_REF: u16 = 0xFFFC;
 const PRG_START: u16 = 0x8000;
 const STACK_START: u8 = 0x00FF;
@@ -30,17 +29,25 @@ pub struct CPU {
     pub register_y: u8,
     pub status: CPUFlags,
     pub program_counter: u16,
-    memory: [u8; MEM_SIZE],
+    pub bus: Bus,
 }
 
 
 impl Mem for CPU {
     fn mem_read(&mut self, addr: u16) -> u8 {
-        self.memory[addr as usize]
+        self.bus.mem_read(addr)
+    }
+
+    fn mem_read_u16(&mut self, addr: u16) -> u16 {
+        self.bus.mem_read_u16(addr)
     }
 
     fn mem_write(&mut self, addr: u16, data: u8) {
-        self.memory[addr as usize] = data;
+        self.bus.mem_write(addr, data);
+    }
+
+    fn mem_write_u16(&mut self, addr: u16, data: u16) {
+        self.bus.mem_write_u16(addr, data);
     }
 }
 
@@ -55,7 +62,7 @@ impl CPU {
             register_y: 0,
             status: CPUFlags::from_bits_truncate(0b0010_0100),
             program_counter: 0,
-            memory: [0; MEM_SIZE],
+            bus: Bus::new(),
         }
     }
 
@@ -112,12 +119,12 @@ impl CPU {
 
     fn pull_stack(&mut self) -> u8 {
         self.set_stack_ptr(self.stack_ptr.wrapping_add(1));
-        return self.mem_read(STACK_END | self.stack_ptr as u16);
+        self.mem_read(STACK_END | self.stack_ptr as u16)
     }
 
     fn pull_stack_u16(&mut self) -> u16 {
         let res: u16 = self.pull_stack() as u16;
-        return res | ((self.pull_stack() as u16) << 8);
+        res | ((self.pull_stack() as u16) << 8)
     }
 
     fn set_zero_and_neg_flags(&mut self, val: u8) {
@@ -471,7 +478,9 @@ impl CPU {
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
-        self.memory[PRG_START as usize .. (PRG_START as usize + program.len())].copy_from_slice(&program[..]);
+        for i in 0..(program.len() as u16) {
+            self.mem_write(PRG_START + i, program[i as usize]);
+        }
         self.mem_write_u16(PRG_REF, PRG_START);
     }
 
@@ -560,7 +569,9 @@ impl CPU {
     }
 
     pub fn load_snake(&mut self, program: Vec<u8>) {
-        self.memory[0x0600..(0x0600 + program.len())].copy_from_slice(&program[..]);
+        for i in 0..(program.len() as u16) {
+            self.mem_write(0x600 + i, program[i as usize]);
+        }
         self.mem_write_u16(0xFFFC, 0x0600);
     }
 
@@ -663,36 +674,6 @@ mod test {
     use super::*;
     use test_case::test_case;
 
-    #[test]
-    fn test_read_memory() {
-        let mut cpu: CPU = CPU::new();
-        cpu.memory[PRG_START as usize] = 0xA1;
-        assert!(cpu.mem_read(PRG_START) == 0xA1);
-    }
-
-    #[test]
-    fn test_write_memory() {
-        let mut cpu: CPU = CPU::new();
-        cpu.mem_write(PRG_START, 0xA1);
-        assert_eq!(cpu.memory[PRG_START as usize], 0xA1);
-    }
-
-    #[test]
-    fn test_read_memory_u16() {
-        let mut cpu: CPU = CPU::new();
-        cpu.memory[PRG_START as usize] = 0xAA;
-        cpu.memory[(PRG_START + 1) as usize] = 0x05;
-        assert_eq!(cpu.mem_read_u16(PRG_START), 0x05AA);
-    }
-
-    #[test]
-    fn test_write_memory_u16() {
-        let mut cpu: CPU = CPU::new();
-        cpu.mem_write_u16(PRG_START, 0x0508);
-        assert_eq!(cpu.memory[PRG_START as usize], 0x08);
-        assert_eq!(cpu.memory[(PRG_START + 1) as usize], 0x05);
-    }
-
     #[test_case(
         &AddressingMode::Immediate, 0x00, 0x00, 0x0000, 0x00, 0x00, 0x00, 0x00, PRG_START;
         "Immediate addressing mode"
@@ -768,10 +749,10 @@ mod test {
         cpu.program_counter = PRG_START;
         cpu.register_x = register_x;
         cpu.register_y = register_y;
-        cpu.memory[PRG_START as usize] = inp1;
-        cpu.memory[(PRG_START + 1) as usize] = inp2;
-        cpu.memory[mem_addr as usize] = mem2;
-        cpu.memory[(mem_addr as u16).wrapping_add(1) as usize] = mem1;
+        cpu.mem_write(PRG_START, inp1);
+        cpu.mem_write(PRG_START + 2, inp2);
+        cpu.mem_write(mem_addr, mem2);
+        cpu.mem_write(mem_addr.wrapping_add(1), mem1);
         let res: u16 = cpu.get_operand_address(mode);
         assert_eq!(res, expected);
     }
@@ -781,7 +762,7 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.push_stack(0x05);
         assert_eq!(cpu.stack_ptr, 0xFE);
-        assert_eq!(cpu.memory[0x01FF], 0x05);
+        assert_eq!(cpu.mem_read(0x01FF), 0x05);
     }
 
     #[test]
@@ -789,15 +770,15 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.push_stack_u16(0x0102);
         assert_eq!(cpu.stack_ptr, 0xFD);
-        assert_eq!(cpu.memory[0x01FF], 0x01);
-        assert_eq!(cpu.memory[0x01FE], 0x02);
+        assert_eq!(cpu.mem_read(0x01FF), 0x01);
+        assert_eq!(cpu.mem_read(0x01FE), 0x02);
     }
 
     #[test]
     fn test_pull() {
         let mut cpu: CPU = CPU::new();
         cpu.stack_ptr = 0xFE;
-        cpu.memory[0x01FF] = 0x05;
+        cpu.mem_write(0x01FF, 0x05);
         let res: u8 = cpu.pull_stack();
         assert_eq!(cpu.stack_ptr, 0xFF);
         assert_eq!(res, 0x05);
@@ -807,8 +788,8 @@ mod test {
     fn test_pull_u16() {
         let mut cpu: CPU = CPU::new();
         cpu.stack_ptr = 0xFD;
-        cpu.memory[0x01FE] = 0x02;
-        cpu.memory[0x01FF] = 0x01;
+        cpu.mem_write(0x01FE, 0x02);
+        cpu.mem_write(0x01FF, 0x01);
         let res: u16 = cpu.pull_stack_u16();
         assert_eq!(cpu.stack_ptr, 0xFF);
         assert_eq!(res, 0x0102);
@@ -835,18 +816,18 @@ mod test {
         let mut cpu: CPU = CPU::new();
         cpu.load(vec![0xA9, 0x05, 0x00]);
         assert_eq!(cpu.mem_read_u16(PRG_REF), PRG_START);
-        assert_eq!(cpu.memory[PRG_START as usize], 0xA9);
-        assert_eq!(cpu.memory[(PRG_START + 1) as usize], 0x05);
-        assert_eq!(cpu.memory[(PRG_START + 2) as usize], 0x00);
+        assert_eq!(cpu.mem_read(PRG_START), 0xA9);
+        assert_eq!(cpu.mem_read(PRG_START + 1), 0x05);
+        assert_eq!(cpu.mem_read(PRG_START + 2), 0x00);
     }
 
     #[test]
     fn test_run() {
         let mut cpu: CPU = CPU::new();
         cpu.program_counter = PRG_START;
-        cpu.memory[PRG_START as usize] = 0xA9;
-        cpu.memory[(PRG_START + 1) as usize] = 0x05;
-        cpu.memory[(PRG_START + 2) as usize] = 0x00;
+        cpu.mem_write(PRG_START, 0xA9);
+        cpu.mem_write(PRG_START + 1, 0x05);
+        cpu.mem_write(PRG_START + 2, 0x00);
         cpu.run();
         assert_eq!(cpu.accumulator, 0x05);
         assert_eq!(cpu.program_counter, PRG_START + 3);
@@ -856,10 +837,10 @@ mod test {
     fn test_load_and_run() {
         let mut cpu: CPU = CPU::new();
         cpu.load_and_run(vec![0xA9, 0x05, 0x00]);
-        assert!(cpu.program_counter == PRG_START + 3);
-        assert!(cpu.memory[PRG_START as usize] == 0xA9);
-        assert!(cpu.memory[(PRG_START + 1) as usize] == 0x05);
-        assert!(cpu.memory[(PRG_START + 2) as usize] == 0x00);
+        assert_eq!(cpu.program_counter, PRG_START + 3);
+        assert_eq!(cpu.mem_read(PRG_START), 0xA9);
+        assert_eq!(cpu.mem_read(PRG_START + 1), 0x05);
+        assert_eq!(cpu.mem_read(PRG_START + 2), 0x00);
         assert_eq!(cpu.accumulator, 0x05);
         assert_eq!(cpu.register_x, 0);
         assert_eq!(cpu.register_y, 0);
@@ -927,7 +908,7 @@ mod test {
     fn test_adc(accumulator: u8, mem: u8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
-        cpu.memory[0x00] = mem;
+        cpu.mem_write(0x00, mem);
         cpu.status = initial_status;
         cpu.adc(&AddressingMode::Immediate);
         assert_eq!(cpu.accumulator, expected_acc);
@@ -949,7 +930,7 @@ mod test {
     fn test_and(accumulator: u8, mem: u8, expected_acc: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
-        cpu.memory[0x00] = mem;
+        cpu.mem_write(0x00, mem);
         cpu.and(&AddressingMode::Immediate);
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status)
@@ -978,10 +959,10 @@ mod test {
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
 
-        cpu.memory[0x05] = accumulator;
-        cpu.memory[0x00] = 0x05;
+        cpu.mem_write(0x05, accumulator);
+        cpu.mem_write(0x00, 0x05);
         cpu.asl(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], expected_acc);
+        assert_eq!(cpu.mem_read(0x05), expected_acc);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
     }
 
@@ -1004,8 +985,8 @@ mod test {
     fn test_bit(accumulator: u8, operand: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
-        cpu.memory[0x00] = 0x05;
-        cpu.memory[0x05] = operand;
+        cpu.mem_write(0x00, 0x05);
+        cpu.mem_write(0x05, operand);
         cpu.bit(&AddressingMode::ZeroPage);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
     }
@@ -1013,7 +994,7 @@ mod test {
     #[test]
     fn test_branch() {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x00] = 0x05;
+        cpu.mem_write(0x00, 0x05);
         cpu.branch(true);
         assert_eq!(cpu.program_counter, 0x06);
     }
@@ -1040,7 +1021,7 @@ mod test {
     fn test_cmp(accumulator: u8, operand: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
-        cpu.memory[0x00] = operand;
+        cpu.mem_write(0x00, operand);
         cpu.cmp(&AddressingMode::Immediate, accumulator);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
     }
@@ -1067,11 +1048,11 @@ mod test {
     )]
     fn test_dec(mem: u8, initial_status: CPUFlags, expected_mem: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x00] = 0x05;
-        cpu.memory[0x05] = mem;
+        cpu.mem_write(0x00, 0x05);
+        cpu.mem_write(0x05, mem);
         cpu.status = initial_status;
         cpu.dec(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], expected_mem);
+        assert_eq!(cpu.mem_read(0x05), expected_mem);
         assert_eq!(cpu.status, expected_status);
     }
 
@@ -1148,7 +1129,7 @@ mod test {
     fn test_eor(accumulator: u8, operand: u8, expected_acc: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
-        cpu.memory[0x00] = operand;
+        cpu.mem_write(0x00, operand);
         cpu.eor(&AddressingMode::Immediate);
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
@@ -1172,11 +1153,11 @@ mod test {
     )]
     fn test_inc(mem: u8, initial_status: CPUFlags, expected_mem: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x00] = 0x05;
-        cpu.memory[0x05] = mem;
+        cpu.mem_write(0x00, 0x05);
+        cpu.mem_write(0x05, mem);
         cpu.status = initial_status;
         cpu.inc(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], expected_mem);
+        assert_eq!(cpu.mem_read(0x05), expected_mem);
         assert_eq!(cpu.status, expected_status);
     }
 
@@ -1233,8 +1214,8 @@ mod test {
     #[test]
     fn test_jmp() {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x00] = 0x12;
-        cpu.memory[0x01] = 0x34;
+        cpu.mem_write(0x00, 0x12);
+        cpu.mem_write(0x01, 0x34);
         cpu.jmp(&AddressingMode::Absolute);
         assert_eq!(cpu.program_counter, 0x3412);
     }
@@ -1251,20 +1232,20 @@ mod test {
     fn test_jsr() {
         let mut cpu: CPU = CPU::new();
         cpu.program_counter = 0x1234;
-        cpu.memory[0x1234 as usize] = 0x56;
-        cpu.memory[0x1235 as usize] = 0x78;
+        cpu.mem_write(0x1234, 0x56);
+        cpu.mem_write(0x1235, 0x78);
         cpu.jsr();
         assert_eq!(cpu.program_counter, 0x7856);
-        assert_eq!(cpu.memory[0x01FF], 0x12);
-        assert_eq!(cpu.memory[0x01FE], 0x35);
+        assert_eq!(cpu.mem_read(0x01FF), 0x12);
+        assert_eq!(cpu.mem_read(0x01FE), 0x35);
     }
 
     #[test]
     fn test_jsr_and_rts() {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x2010] = 0xA9;
-        cpu.memory[0x2011] = 0x05;
-        cpu.memory[0x2012] = 0x60;
+        cpu.mem_write(0x2010, 0xA9);
+        cpu.mem_write(0x2011, 0x05);
+        cpu.mem_write(0x2012, 0x60);
         cpu.load_and_run(vec![0x20, 0x10, 0x20, 0x00]);
         assert_eq!(cpu.accumulator, 0x05);
     }
@@ -1283,7 +1264,7 @@ mod test {
     )]
     fn test_lda(accumulator: u8, expected_acc: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x00] = accumulator;
+        cpu.mem_write(0x00, accumulator);
         cpu.lda(&AddressingMode::Immediate);
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
@@ -1303,7 +1284,7 @@ mod test {
     )]
     fn test_ldx(register_x: u8, expected_x: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x00] = register_x;
+        cpu.mem_write(0x00, register_x);
         cpu.ldx(&AddressingMode::Immediate);
         assert_eq!(cpu.register_x, expected_x);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
@@ -1323,7 +1304,7 @@ mod test {
     )]
     fn test_ldy(register_y: u8, expected_y: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
-        cpu.memory[0x00] = register_y;
+        cpu.mem_write(0x00, register_y);
         cpu.ldy(&AddressingMode::Immediate);
         assert_eq!(cpu.register_y, expected_y);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
@@ -1349,11 +1330,11 @@ mod test {
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
 
-        cpu.memory[0x05] = accumulator;
-        cpu.memory[0x00] = 0x05;
+        cpu.mem_write(0x05, accumulator);
+        cpu.mem_write(0x00, 0x05);
         cpu.status = initial_status;
         cpu.lsr(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], expected_acc);
+        assert_eq!(cpu.mem_read(0x05), expected_acc);
         assert_eq!(cpu.status, expected_status);
     }
 
@@ -1372,7 +1353,7 @@ mod test {
     fn test_ora(accumulator: u8, operand: u8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
-        cpu.memory[0x00] = operand;
+        cpu.mem_write(0x00, operand);
         cpu.status = initial_status;
         cpu.ora(&AddressingMode::Immediate);
         assert_eq!(cpu.accumulator, expected_acc);
@@ -1394,7 +1375,7 @@ mod test {
     fn test_pla(stack: u8, expected_acc: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
         cpu.stack_ptr = 0xFE;
-        cpu.memory[0x01FF] = stack;
+        cpu.mem_write(0x01FF, stack);
         cpu.pla();
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.stack_ptr, 0xFF);
@@ -1429,11 +1410,11 @@ mod test {
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
 
-        cpu.memory[0x05] = accumulator;
-        cpu.memory[0x00] = 0x05;
+        cpu.mem_write(0x05, accumulator);
+        cpu.mem_write(0x00, 0x05);
         cpu.status = initial_status;
         cpu.rol(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], expected_acc);
+        assert_eq!(cpu.mem_read(0x05), expected_acc);
         assert_eq!(cpu.status, expected_status);
     }
 
@@ -1461,11 +1442,11 @@ mod test {
         assert_eq!(cpu.accumulator, expected_acc);
         assert_eq!(cpu.status, expected_status);
 
-        cpu.memory[0x05] = accumulator;
-        cpu.memory[0x00] = 0x05;
+        cpu.mem_write(0x05, accumulator);
+        cpu.mem_write(0x00, 0x05);
         cpu.status = initial_status;
         cpu.ror(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], expected_acc);
+        assert_eq!(cpu.mem_read(0x05), expected_acc);
         assert_eq!(cpu.status, expected_status);
     }
 
@@ -1473,9 +1454,9 @@ mod test {
     fn test_rti() {
         let mut cpu: CPU = CPU::new();
         cpu.stack_ptr = 0xFC;
-        cpu.memory[0x01FF] = 0x80;
-        cpu.memory[0x01FE] = 0x03;
-        cpu.memory[0x01FD] = (CPUFlags::CARRY | CPUFlags::NEG).bits;
+        cpu.mem_write(0x01FF, 0x80);
+        cpu.mem_write(0x01FE, 0x03);
+        cpu.mem_write(0x01FD, (CPUFlags::CARRY | CPUFlags::NEG).bits);
         cpu.rti();
         assert_eq!(cpu.program_counter, 0x8003);
         assert_eq!(cpu.status, CPUFlags::CARRY | CPUFlags::NEG);
@@ -1485,8 +1466,8 @@ mod test {
     fn test_rts() {
         let mut cpu: CPU = CPU::new();
         cpu.stack_ptr = 0xFD;
-        cpu.memory[0x01FF] = 0x80;
-        cpu.memory[0x01FE] = 0x03;
+        cpu.mem_write(0x01FF, 0x80);
+        cpu.mem_write(0x01FE, 0x03);
         cpu.rts();
         assert_eq!(cpu.program_counter, 0x8004);
     }
@@ -1522,7 +1503,7 @@ mod test {
     fn test_sbc(accumulator: u8, operand: i8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = accumulator;
-        cpu.memory[0x00] = operand as u8;
+        cpu.mem_write(0x00, operand as u8);
         cpu.status = initial_status;
         cpu.sbc(&AddressingMode::Immediate);
         assert_eq!(cpu.accumulator, expected_acc);
@@ -1533,26 +1514,26 @@ mod test {
     fn test_sta() {
         let mut cpu: CPU = CPU::new();
         cpu.accumulator = 0x01;
-        cpu.memory[0x00] = 0x05;
+        cpu.mem_write(0x00, 0x05);
         cpu.sta(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], 0x01)
+        assert_eq!(cpu.mem_read(0x05), 0x01);
     }
 
     #[test]
     fn test_stx() {
         let mut cpu: CPU = CPU::new();
         cpu.register_x = 0x01;
-        cpu.memory[0x00] = 0x05;
+        cpu.mem_write(0x00, 0x05);
         cpu.stx(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], 0x01)
+        assert_eq!(cpu.mem_read(0x05), 0x01);
     }
 
     #[test]
     fn test_sty() {
         let mut cpu: CPU = CPU::new();
         cpu.register_y = 0x01;
-        cpu.memory[0x00] = 0x05;
+        cpu.mem_write(0x00, 0x05);
         cpu.sty(&AddressingMode::ZeroPage);
-        assert_eq!(cpu.memory[0x05], 0x01)
+        assert_eq!(cpu.mem_read(0x05), 0x01);
     }
 }
