@@ -63,6 +63,10 @@ impl Bus {
     }
 
     fn read_prg_rom(&self, mut addr: u16) -> u8 {
-        
+        addr -= 0x8000;
+        if self.rom.prg.len() == 0x4000 && addr >= 0x4000 {
+            addr = addr % 0x4000;
+        }
+        self.rom.prg[addr as usize]
     }
- }
+}
