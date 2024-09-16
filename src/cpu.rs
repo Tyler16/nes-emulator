@@ -5,7 +5,7 @@ use crate::bus::Bus;
 use crate::mem::Mem;
 
 const PRG_REF: u16 = 0xFFFC;
-const PRG_START: u16 = 0x8000;
+const PRG_START: u16 = 0x8600;
 const STACK_START: u8 = 0x00FF;
 const STACK_END: u16 = 0x0100;
 
@@ -34,6 +34,7 @@ pub struct CPU {
 
 
 impl Mem for CPU {
+
     fn mem_read(&mut self, addr: u16) -> u8 {
         self.bus.mem_read(addr)
     }
@@ -54,7 +55,7 @@ impl Mem for CPU {
 
 impl CPU {
 
-    pub fn new() -> Self {
+    pub fn new(bus: Bus) -> Self {
         CPU {
             stack_ptr: STACK_START,
             accumulator: 0,
@@ -62,7 +63,7 @@ impl CPU {
             register_y: 0,
             status: CPUFlags::from_bits_truncate(0b0010_0100),
             program_counter: 0,
-            bus: Bus::new(),
+            bus: bus,
         }
     }
 
@@ -107,6 +108,7 @@ impl CPU {
         }
     }
 
+    // Stack operations
     fn push_stack(&mut self, val: u8) {
         self.mem_write(STACK_END | self.stack_ptr as u16, val);
         self.set_stack_ptr(self.stack_ptr.wrapping_sub(1));
@@ -448,6 +450,7 @@ impl CPU {
         self.add_to_acc((operand as i8).wrapping_neg().wrapping_sub(1) as u8);
     }
 
+    // Accumulator write functions
     fn sta(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         self.mem_write(addr, self.accumulator);
@@ -469,6 +472,7 @@ impl CPU {
         self.run();
     }
 
+    // Reset CPU values
     pub fn reset(&mut self) {
         self.accumulator = 0;
         self.register_x = 0;
@@ -477,6 +481,7 @@ impl CPU {
         self.program_counter = self.mem_read_u16(PRG_REF);
     }
 
+    // Load program into memory
     pub fn load(&mut self, program: Vec<u8>) {
         for i in 0..(program.len() as u16) {
             self.mem_write(PRG_START + i, program[i as usize]);
@@ -484,6 +489,7 @@ impl CPU {
         self.mem_write_u16(PRG_REF, PRG_START);
     }
 
+    // Run program from memory
     pub fn run(&mut self) {
         let ref opcodes: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
 
@@ -672,6 +678,7 @@ impl CPU {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::rom::test;
     use test_case::test_case;
 
     #[test_case(
@@ -745,7 +752,8 @@ mod test {
         register_x: u8, register_y: u8,
         expected: u16
     ) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.program_counter = PRG_START;
         cpu.register_x = register_x;
         cpu.register_y = register_y;
@@ -759,7 +767,8 @@ mod test {
 
     #[test]
     fn test_push() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.push_stack(0x05);
         assert_eq!(cpu.stack_ptr, 0xFE);
         assert_eq!(cpu.mem_read(0x01FF), 0x05);
@@ -767,7 +776,8 @@ mod test {
 
     #[test]
     fn test_push_u16() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.push_stack_u16(0x0102);
         assert_eq!(cpu.stack_ptr, 0xFD);
         assert_eq!(cpu.mem_read(0x01FF), 0x01);
@@ -776,7 +786,8 @@ mod test {
 
     #[test]
     fn test_pull() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.stack_ptr = 0xFE;
         cpu.mem_write(0x01FF, 0x05);
         let res: u8 = cpu.pull_stack();
@@ -786,7 +797,8 @@ mod test {
 
     #[test]
     fn test_pull_u16() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.stack_ptr = 0xFD;
         cpu.mem_write(0x01FE, 0x02);
         cpu.mem_write(0x01FF, 0x01);
@@ -797,7 +809,8 @@ mod test {
 
     #[test]
     fn test_reset() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = 0xFF;
         cpu.register_x = 0xFF;
         cpu.register_y = 0xFF;
@@ -813,7 +826,8 @@ mod test {
 
     #[test]
     fn test_load() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.load(vec![0xA9, 0x05, 0x00]);
         assert_eq!(cpu.mem_read_u16(PRG_REF), PRG_START);
         assert_eq!(cpu.mem_read(PRG_START), 0xA9);
@@ -823,7 +837,8 @@ mod test {
 
     #[test]
     fn test_run() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.program_counter = PRG_START;
         cpu.mem_write(PRG_START, 0xA9);
         cpu.mem_write(PRG_START + 1, 0x05);
@@ -835,7 +850,8 @@ mod test {
 
     #[test]
     fn test_load_and_run() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.load_and_run(vec![0xA9, 0x05, 0x00]);
         assert_eq!(cpu.program_counter, PRG_START + 3);
         assert_eq!(cpu.mem_read(PRG_START), 0xA9);
@@ -859,14 +875,16 @@ mod test {
         "neg flag set"
     )]
     fn test_set_zero_and_neg(val: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.set_zero_and_neg_flags(val);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | expected_status);
     }
 
     #[test]
     fn set_registers() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.set_acc(0x01);
         assert_eq!(cpu.accumulator, 0x01);
         cpu.set_reg_x(0x01);
@@ -906,7 +924,8 @@ mod test {
         "adc sets neg and overflow"
     )]
     fn test_adc(accumulator: u8, mem: u8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.mem_write(0x00, mem);
         cpu.status = initial_status;
@@ -928,7 +947,8 @@ mod test {
         "and sets neg flag"
     )]
     fn test_and(accumulator: u8, mem: u8, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.mem_write(0x00, mem);
         cpu.and(&AddressingMode::Immediate);
@@ -953,7 +973,8 @@ mod test {
         "asl sets carry flag"
     )]
     fn test_asl(accumulator: u8, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.asl_acc();
         assert_eq!(cpu.accumulator, expected_acc);
@@ -983,7 +1004,8 @@ mod test {
         "bit sets overflow flag"
     )]
     fn test_bit(accumulator: u8, operand: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.mem_write(0x00, 0x05);
         cpu.mem_write(0x05, operand);
@@ -993,7 +1015,8 @@ mod test {
 
     #[test]
     fn test_branch() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.mem_write(0x00, 0x05);
         cpu.branch(true);
         assert_eq!(cpu.program_counter, 0x06);
@@ -1001,7 +1024,8 @@ mod test {
 
     #[test]
     fn test_brk() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.load_and_run(vec![0x00]);
         assert_eq!(cpu.status, CPUFlags::from_bits_truncate(0b0010_0100) | CPUFlags::BRK);
     }
@@ -1019,7 +1043,8 @@ mod test {
         "cmp less"
     )]
     fn test_cmp(accumulator: u8, operand: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.mem_write(0x00, operand);
         cpu.cmp(&AddressingMode::Immediate, accumulator);
@@ -1047,7 +1072,8 @@ mod test {
         "dec clears neg flag"
     )]
     fn test_dec(mem: u8, initial_status: CPUFlags, expected_mem: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.mem_write(0x00, 0x05);
         cpu.mem_write(0x05, mem);
         cpu.status = initial_status;
@@ -1077,7 +1103,8 @@ mod test {
         "dex clears neg flag"
     )]
     fn test_dex(register_x: u8, initial_status: CPUFlags, expected_x: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.register_x = register_x;
         cpu.status = initial_status;
         cpu.dex();
@@ -1106,7 +1133,8 @@ mod test {
         "dey clears neg flag"
     )]
     fn test_dey(register_y: u8, initial_status: CPUFlags, expected_y: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.register_y = register_y;
         cpu.status = initial_status;
         cpu.dey();
@@ -1127,7 +1155,8 @@ mod test {
         "eor sets neg flag"
     )]
     fn test_eor(accumulator: u8, operand: u8, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.mem_write(0x00, operand);
         cpu.eor(&AddressingMode::Immediate);
@@ -1152,7 +1181,8 @@ mod test {
         "inc keeps neg flag"
     )]
     fn test_inc(mem: u8, initial_status: CPUFlags, expected_mem: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.mem_write(0x00, 0x05);
         cpu.mem_write(0x05, mem);
         cpu.status = initial_status;
@@ -1178,7 +1208,8 @@ mod test {
         "inx keeps neg flag"
     )]
     fn test_inx(register_x: u8, initial_status: CPUFlags, expected_x: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.register_x = register_x;
         cpu.status = initial_status;
         cpu.inx();
@@ -1203,7 +1234,8 @@ mod test {
         "iny keeps neg flag"
     )]
     fn test_iny(register_y: u8, initial_status: CPUFlags, expected_y: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.register_y = register_y;
         cpu.status = initial_status;
         cpu.iny();
@@ -1213,7 +1245,8 @@ mod test {
 
     #[test]
     fn test_jmp() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.mem_write(0x00, 0x12);
         cpu.mem_write(0x01, 0x34);
         cpu.jmp(&AddressingMode::Absolute);
@@ -1222,7 +1255,8 @@ mod test {
 
     #[test]
     fn test_jmp_running() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.load_and_run(vec![0x4C, 0x05, 0x80, 0xA9, 0xAA, 0xA2, 0x11, 0x00]);
         assert_eq!(cpu.register_x, 0x11);
         assert_eq!(cpu.accumulator, 0);
@@ -1230,7 +1264,8 @@ mod test {
 
     #[test]
     fn test_jsr() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.program_counter = 0x1234;
         cpu.mem_write(0x1234, 0x56);
         cpu.mem_write(0x1235, 0x78);
@@ -1242,7 +1277,8 @@ mod test {
 
     #[test]
     fn test_jsr_and_rts() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.mem_write(0x2010, 0xA9);
         cpu.mem_write(0x2011, 0x05);
         cpu.mem_write(0x2012, 0x60);
@@ -1263,7 +1299,8 @@ mod test {
         "lda sets neg flag"
     )]
     fn test_lda(accumulator: u8, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.mem_write(0x00, accumulator);
         cpu.lda(&AddressingMode::Immediate);
         assert_eq!(cpu.accumulator, expected_acc);
@@ -1283,7 +1320,8 @@ mod test {
         "ldx sets neg flag"
     )]
     fn test_ldx(register_x: u8, expected_x: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.mem_write(0x00, register_x);
         cpu.ldx(&AddressingMode::Immediate);
         assert_eq!(cpu.register_x, expected_x);
@@ -1303,7 +1341,8 @@ mod test {
         "ldy sets neg flag"
     )]
     fn test_ldy(register_y: u8, expected_y: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.mem_write(0x00, register_y);
         cpu.ldy(&AddressingMode::Immediate);
         assert_eq!(cpu.register_y, expected_y);
@@ -1323,7 +1362,8 @@ mod test {
         "lsr sets carry and zero flag"
     )]
     fn test_lsr(accumulator: u8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.status = initial_status;
         cpu.lsr_acc();
@@ -1351,7 +1391,8 @@ mod test {
         "ora sets neg flag"
     )]
     fn test_ora(accumulator: u8, operand: u8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.mem_write(0x00, operand);
         cpu.status = initial_status;
@@ -1373,7 +1414,8 @@ mod test {
         "pla sets neg flag"
     )]
     fn test_pla(stack: u8, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.stack_ptr = 0xFE;
         cpu.mem_write(0x01FF, stack);
         cpu.pla();
@@ -1403,7 +1445,8 @@ mod test {
         "rol sets neg flag"
     )]
     fn test_rol(accumulator: u8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.status = initial_status;
         cpu.rol_acc();
@@ -1435,7 +1478,8 @@ mod test {
         "ror sets zero flag"
     )]
     fn test_ror(accumulator: u8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.status = initial_status;
         cpu.ror_acc();
@@ -1452,7 +1496,8 @@ mod test {
 
     #[test]
     fn test_rti() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.stack_ptr = 0xFC;
         cpu.mem_write(0x01FF, 0x80);
         cpu.mem_write(0x01FE, 0x03);
@@ -1464,7 +1509,8 @@ mod test {
 
     #[test]
     fn test_rts() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.stack_ptr = 0xFD;
         cpu.mem_write(0x01FF, 0x80);
         cpu.mem_write(0x01FE, 0x03);
@@ -1501,7 +1547,8 @@ mod test {
         "sbc subtracts negative overflow"
     )]
     fn test_sbc(accumulator: u8, operand: i8, initial_status: CPUFlags, expected_acc: u8, expected_status: CPUFlags) {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = accumulator;
         cpu.mem_write(0x00, operand as u8);
         cpu.status = initial_status;
@@ -1512,7 +1559,8 @@ mod test {
 
     #[test]
     fn test_sta() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.accumulator = 0x01;
         cpu.mem_write(0x00, 0x05);
         cpu.sta(&AddressingMode::ZeroPage);
@@ -1521,7 +1569,8 @@ mod test {
 
     #[test]
     fn test_stx() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.register_x = 0x01;
         cpu.mem_write(0x00, 0x05);
         cpu.stx(&AddressingMode::ZeroPage);
@@ -1530,7 +1579,8 @@ mod test {
 
     #[test]
     fn test_sty() {
-        let mut cpu: CPU = CPU::new();
+        let bus: Bus = Bus::new(test::test_rom());
+        let mut cpu: CPU = CPU::new(bus);
         cpu.register_y = 0x01;
         cpu.mem_write(0x00, 0x05);
         cpu.sty(&AddressingMode::ZeroPage);
