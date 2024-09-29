@@ -6,7 +6,7 @@ use crate::mem::Mem;
 
 const PRG_REF: u16 = 0xFFFC;
 const PRG_START: u16 = 0x8600;
-const STACK_START: u8 = 0x00FF;
+const STACK_START: u8 = 0x00FD;
 const STACK_END: u16 = 0x0100;
 
 bitflags! {
@@ -35,11 +35,11 @@ pub struct CPU {
 
 impl Mem for CPU {
 
-    fn mem_read(&mut self, addr: u16) -> u8 {
+    fn mem_read(&self, addr: u16) -> u8 {
         self.bus.mem_read(addr)
     }
 
-    fn mem_read_u16(&mut self, addr: u16) -> u16 {
+    fn mem_read_u16(&self, addr: u16) -> u16 {
         self.bus.mem_read_u16(addr)
     }
 
@@ -67,44 +67,50 @@ impl CPU {
         }
     }
 
-    fn get_operand_address(&mut self, mode: &AddressingMode) -> u16 {
+    pub fn get_non_immediate_addr(&self, mode: &AddressingMode, curr_addr: u16) -> u16 {
         match mode {
-            AddressingMode::Immediate => self.program_counter,
-            AddressingMode::ZeroPage => self.mem_read(self.program_counter) as u16,
+            AddressingMode::ZeroPage => self.mem_read(curr_addr) as u16,
             AddressingMode::ZeroPage_X => {
-                let base: u8 = self.mem_read(self.program_counter);
+                let base: u8 = self.mem_read(curr_addr);
                 let addr: u16 = base.wrapping_add(self.register_x) as u16;
                 addr
             },
             AddressingMode::ZeroPage_Y => {
-                let base: u8 = self.mem_read(self.program_counter);
+                let base: u8 = self.mem_read(curr_addr);
                 let addr: u16 = base.wrapping_add(self.register_y) as u16;
                 addr
             },
-            AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
+            AddressingMode::Absolute => self.mem_read_u16(curr_addr),
             AddressingMode::Absolute_X => {
-                let base: u16 = self.mem_read_u16(self.program_counter);
+                let base: u16 = self.mem_read_u16(curr_addr);
                 let addr: u16 = base.wrapping_add(self.register_x as u16);
                 addr
             },
             AddressingMode::Absolute_Y => {
-                let base: u16 = self.mem_read_u16(self.program_counter);
+                let base: u16 = self.mem_read_u16(curr_addr);
                 let addr: u16 = base.wrapping_add(self.register_y as u16);
                 addr
             },
             AddressingMode::Indirect => {
-                let base: u16 = self.mem_read_u16(self.program_counter);
+                let base: u16 = self.mem_read_u16(curr_addr);
                 self.mem_read_u16(base)
             },
             AddressingMode::Indirect_X => {
-                let base: u8 = self.mem_read(self.program_counter);
+                let base: u8 = self.mem_read(curr_addr);
                 self.mem_read_u16(base.wrapping_add(self.register_x) as u16)
             }
             AddressingMode::Indirect_Y => {
-                let base: u8 = self.mem_read(self.program_counter);
+                let base: u8 = self.mem_read(curr_addr);
                 self.mem_read_u16(base as u16).wrapping_add(self.register_y as u16)
             }
             _ => 0,
+        }
+    }
+
+    fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
+        match mode {
+            AddressingMode::Immediate => self.program_counter,
+            _ => self.get_non_immediate_addr(mode, self.program_counter),
         }
     }
 

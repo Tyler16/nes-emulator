@@ -1,8 +1,8 @@
 pub trait Mem {
-    fn mem_read(&mut self, addr: u16) -> u8;
+    fn mem_read(&self, addr: u16) -> u8;
     fn mem_write(&mut self, addr: u16, data: u8);
     
-    fn mem_read_u16(&mut self, addr: u16) -> u16 {
+    fn mem_read_u16(&self, addr: u16) -> u16 {
         let low: u16 = self.mem_read(addr) as u16;
         let high: u16 = self.mem_read(addr + 1) as u16;
         return (high << 8) | low;

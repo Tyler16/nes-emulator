@@ -3,11 +3,13 @@ pub mod rom;
 pub mod mem;
 pub mod cpu;
 pub mod opcodes;
+pub mod trace;
 
 use bus::Bus;
 use rom::Rom;
 use mem::Mem;
 use cpu::CPU;
+use trace::trace;
 use rand::Rng;
 
 use sdl2::event::Event;
@@ -22,6 +24,8 @@ extern crate lazy_static;
 
 #[macro_use]
 extern crate bitflags;
+
+const TESTING: bool = false;
 
 fn color(byte: u8) -> Color {
     match byte {
@@ -123,18 +127,23 @@ fn main() {
 
     // run the game cycle
     cpu.run_with_callback(move |cpu| {
-        handle_user_input(cpu, &mut event_pump);
-
-        cpu.mem_write(0xfe, rng.gen_range(1, 16));
-
-        if read_screen_state(cpu, &mut screen_state) {
-            texture.update(None, &screen_state, 32 * 3).unwrap();
-
-            canvas.copy(&texture, None, None).unwrap();
-
-            canvas.present();
+        if TESTING {
+            println!("{}", trace(cpu));
         }
+        else {
+            handle_user_input(cpu, &mut event_pump);
 
-        ::std::thread::sleep(Duration::new(0, 100_000));
+            cpu.mem_write(0xfe, rng.gen_range(1, 16));
+
+            if read_screen_state(cpu, &mut screen_state) {
+                texture.update(None, &screen_state, 32 * 3).unwrap();
+
+                canvas.copy(&texture, None, None).unwrap();
+
+                canvas.present();
+            }
+
+            ::std::thread::sleep(Duration::new(0, 100_000));
+        }
     });
 }

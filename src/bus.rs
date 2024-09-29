@@ -15,7 +15,7 @@ pub struct Bus {
 
 
 impl Mem for Bus {
-    fn mem_read(&mut self, addr: u16) -> u8 {
+    fn mem_read(&self, addr: u16) -> u8 {
         match addr {
             CPU_START ..= CPU_END => {
                 let mirrored_addr: u16 = addr & 0b0111_1111_1111;
