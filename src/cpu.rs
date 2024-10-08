@@ -197,6 +197,23 @@ impl CPU {
         self.set_acc(result);
     }
 
+    fn aac(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Immediate);
+        let operand: u8 = self.mem_read(addr);
+        let check: u8 = self.accumulator & operand;
+        self.set_zero_and_neg_flags(check);
+        if check & 0b1000_0000 != 0 {
+            self.status.insert(CPUFlags::CARRY);
+        }
+    }
+
+    fn aax(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let val: u8 = self.accumulator & self.register_x;
+        self.mem_write(addr, val);
+        self.set_zero_and_neg_flags(val);
+    }
+
     fn adc(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let operand: u8 = self.mem_read(addr);
@@ -207,6 +224,31 @@ impl CPU {
         let addr: u16 = self.get_operand_address(mode);
         let operand: u8 = self.mem_read(addr);
         self.set_acc(self.accumulator & operand);
+    }
+
+    fn arr(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Immediate);
+        let operand: u8 = self.mem_read(addr);
+        self.set_acc(self.accumulator & operand);
+        self.ror_acc();
+        let bit6: bool = self.accumulator & 0b0010_0000 != 0;
+        let bit5: bool = self.accumulator & 0b0001_0000 != 0;
+        
+        if bit6 {
+            self.status.insert(CPUFlags::CARRY);
+        }
+        else {
+            self.status.remove(CPUFlags::CARRY);
+        }
+        
+        if bit6 ^ bit5 {
+            self.status.insert(CPUFlags::OVER);
+        }
+        else {
+            self.status.remove(CPUFlags::OVER);
+        }
+
+        self.set_zero_and_neg_flags(self.accumulator);
     }
 
     fn asl_acc(&mut self) {
@@ -222,8 +264,8 @@ impl CPU {
 
     fn asl(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
-        let initial_val = self.mem_read(addr);
-        let final_val = initial_val << 1;
+        let initial_val: u8 = self.mem_read(addr);
+        let final_val: u8 = initial_val << 1;
 
         if initial_val & 0b1000_0000 != 0 {
             self.status.insert(CPUFlags::CARRY);
@@ -232,6 +274,38 @@ impl CPU {
             self.status.remove(CPUFlags::CARRY);
         }
         self.write_and_set(addr, final_val);
+    }
+
+    fn asr(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Immediate);
+        let val: u8 = self.mem_read(addr);
+        self.set_acc(self.accumulator & val);
+        self.lsr_acc();
+    }
+
+    fn atx(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Immediate);
+        let val: u8 = self.mem_read(addr);
+        self.set_acc(self.accumulator & val);
+        self.set_reg_x(self.accumulator);
+    }
+
+    fn axa(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        self.mem_write(addr, self.accumulator & self.register_x & 7);
+    }
+
+    fn axs(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Immediate);
+        let operand: i8 = self.mem_read(addr).wrapping_neg() as i8;
+        let new_val: u16 = (self.register_x & self.accumulator) as u16 + operand as u16;
+        if new_val > 0xFF {
+            self.status.insert(CPUFlags::CARRY);
+        }
+        else {
+            self.status.remove(CPUFlags::CARRY);
+        }
+        self.set_reg_x(new_val as u8);
     }
 
     fn bit(&mut self, mode: &AddressingMode) {
@@ -272,6 +346,19 @@ impl CPU {
         }
     }
 
+    fn dcp(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let mut val: u8 = self.mem_read(addr);
+        if val == 0 {
+            self.status.insert(CPUFlags::CARRY);
+        }
+        else {
+            self.status.remove(CPUFlags::CARRY);
+        }
+        val = val.wrapping_sub(1);
+        self.mem_write(addr, val);
+    }
+
     fn dec(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         let val: u8 = self.mem_read(addr);
@@ -306,6 +393,13 @@ impl CPU {
         self.set_reg_y(self.register_y.wrapping_add(1));
     }
 
+    fn isc(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr).wrapping_add(1);
+        self.mem_write(addr, operand);
+        self.add_to_acc((operand as i8).wrapping_neg().wrapping_sub(1) as u8);
+    }
+
     fn jmp(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         self.program_counter = addr;
@@ -315,6 +409,23 @@ impl CPU {
         let addr: u16 = self.get_operand_address(&AddressingMode::Absolute);
         self.push_stack_u16(self.program_counter + 1);
         self.program_counter = addr;
+    }
+
+    fn lar(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Absolute_Y);
+        let operand: u8 = self.mem_read(addr);
+        let val: u8 = operand & self.stack_ptr;
+        self.mem_write(addr, val);
+        self.set_acc(val);
+        self.set_reg_x(val);
+        self.set_stack_ptr(val);
+    }
+
+    fn lax(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr);
+        self.set_acc(operand);
+        self.set_reg_x(operand);
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -365,9 +476,56 @@ impl CPU {
         self.set_acc(self.accumulator | operand);
     }
 
+    fn php(&mut self) {
+        let mut flags: CPUFlags = self.status.clone();
+        flags.insert(CPUFlags::BRK);
+        flags.insert(CPUFlags::BRK2);
+        self.push_stack(flags.bits);
+    }
+
     fn pla(&mut self) {
         let val: u8 = self.pull_stack();
         self.set_acc(val);
+    }
+
+    fn plp(&mut self) {
+        self.status.bits = self.pull_stack();
+        self.status.remove(CPUFlags::BRK);
+        self.status.insert(CPUFlags::BRK2);
+    }
+
+    fn rla(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr);
+        let mut new_operand: u8 = operand << 1;
+        if self.status.contains(CPUFlags::CARRY) {
+            new_operand &= 1;
+        }
+        if operand & 0b1000_0000 != 0 {
+            self.status.insert(CPUFlags::CARRY);
+        }
+        else {
+            self.status.remove(CPUFlags::CARRY);
+        }
+        self.mem_write(addr, new_operand);
+        self.set_acc(new_operand & self.accumulator);
+    }
+
+    fn rra(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr);
+        let mut new_operand: u8 = operand >> 1;
+        if self.status.contains(CPUFlags::CARRY) {
+            new_operand &= 0b1000_0000;
+        }
+        if operand & 0b1000_0000 != 0 {
+            self.status.insert(CPUFlags::CARRY);
+        }
+        else {
+            self.status.remove(CPUFlags::CARRY);
+        }
+        self.mem_write(addr, new_operand);
+        self.add_to_acc(new_operand);
     }
 
     fn rol_acc(&mut self) {
@@ -442,6 +600,8 @@ impl CPU {
 
     fn rti(&mut self) {
         self.status.bits = self.pull_stack();
+        self.status.remove(CPUFlags::BRK);
+        self.status.insert(CPUFlags::BRK2);
         self.program_counter = self.pull_stack_u16();
     }
     
@@ -456,7 +616,33 @@ impl CPU {
         self.add_to_acc((operand as i8).wrapping_neg().wrapping_sub(1) as u8);
     }
 
-    // Accumulator write functions
+    fn slo(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr);
+        if operand & 0b1000_0000 != 0 {
+            self.status.insert(CPUFlags::CARRY)
+        }
+        else {
+            self.status.remove(CPUFlags::CARRY)
+        }
+        let new_op: u8 = operand << 1;
+        self.mem_write(addr, new_op);
+        self.set_acc(new_op | self.accumulator);
+    }
+
+    fn sre(&mut self, mode: &AddressingMode) {
+        let addr: u16 = self.get_operand_address(mode);
+        let operand: u8 = self.mem_read(addr);
+        if operand & 1 != 0 {
+            self.status.insert(CPUFlags::CARRY);
+        }
+        else {
+            self.status.remove(CPUFlags::CARRY);
+        }
+        self.mem_write(addr, operand >> 1);
+        self.set_acc((operand >> 1) ^ self.accumulator);
+    }
+    
     fn sta(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         self.mem_write(addr, self.accumulator);
@@ -470,6 +656,32 @@ impl CPU {
     fn sty(&mut self, mode: &AddressingMode) {
         let addr: u16 = self.get_operand_address(mode);
         self.mem_write(addr, self.register_y);
+    }
+
+    fn sxa(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Absolute_Y);
+        let high: u8 = (addr >> 8) as u8;
+        self.mem_write(addr, (high + 1) & self.register_x)
+    }
+
+    fn sya(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Absolute_X);
+        let high: u8 = (addr >> 8) as u8;
+        self.mem_write(addr, (high + 1) & self.register_y);
+    }
+
+    fn xaa(&mut self) {
+        let addr: u16 = self.get_operand_address(&AddressingMode::Immediate);
+        let operand: u8 = self.mem_read(addr);
+        self.set_acc(self.register_x & operand);
+    }
+
+    fn xas(&mut self) {
+        let new_stack_ptr: u8 = self.accumulator & self.register_x;
+        self.set_stack_ptr(new_stack_ptr);
+        let addr: u16 = self.get_operand_address(&AddressingMode::Absolute_Y);
+        let high: u8 = (addr >> 8) as u8;
+        self.mem_write(addr, (high + 1) & self.stack_ptr);
     }
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
@@ -508,10 +720,17 @@ impl CPU {
 
             // Run corresponding operation function
             match code {
+                0x0B | 0x2B => self.aac(),
+                0x87 | 0x97 | 0x83 | 0x8F => self.aax(&opcode.mode),
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
+                0x6B => self.arr(),
                 0x0A => self.asl_acc(),
                 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
+                0x4B => self.asr(),
+                0xAB => self.atx(),
+                0x9F | 0x93 => self.axa(&opcode.mode),
+                0xCB => self.axs(),
                 0x90 => self.branch(!self.status.contains(CPUFlags::CARRY)),
                 0xB0 => self.branch(self.status.contains(CPUFlags::CARRY)),
                 0xF0 => self.branch(self.status.contains(CPUFlags::ZERO)),
@@ -532,46 +751,60 @@ impl CPU {
                 0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => self.cmp(&opcode.mode, self.accumulator),
                 0xE0 | 0xE4 | 0xEC => self.cmp(&opcode.mode, self.register_x),
                 0xC0 | 0xC4 | 0xCC => self.cmp(&opcode.mode, self.register_y),
+                0xC7 | 0xD7 | 0xCF | 0xDF | 0xDB | 0xC3 | 0xD3 => self.dcp(&opcode.mode),
                 0xC6 | 0xD6 | 0xCE | 0xDE => self.dec(&opcode.mode),
                 0xCA => self.dex(),
                 0x88 => self.dey(),
+                0x04 | 0x14 | 0x34 | 0x44 | 0x54 | 0x64 | 0x74 | 0x80 | 0x82 | 0x89 | 0xC2 | 0xD4 | 0xE2 | 0xF4 => {},
+                0xE7 | 0xF7 | 0xEF | 0xFF | 0xFB | 0xE3 | 0xF3 => self.isc(&opcode.mode),
                 0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51 => self.eor(&opcode.mode),
                 0xE6 | 0xF6 | 0xEE | 0xFE => self.inc(&opcode.mode),
                 0xE8 => self.inx(),
                 0xC8 => self.iny(),
                 0x4C | 0x6c => self.jmp(&opcode.mode),
                 0x20 => self.jsr(),
+                0x02 | 0x12 | 0x22 | 0x32 | 0x42 | 0x52 | 0x62 | 0x72 | 0x92 | 0xB2 | 0xD2 | 0xF2 => return,
+                0xBB => self.lar(),
+                0xA7 | 0xB7 | 0xAF | 0xBF | 0xA3 | 0xB3 => self.lax(&opcode.mode),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
                 0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => self.ldx(&opcode.mode),
                 0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
                 0x4A => self.lsr_acc(),
                 0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
-                0xEA => {},
+                0xEA | 0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => {},
                 0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => self.ora(&opcode.mode),
                 0x48 => self.push_stack(self.accumulator),
-                0x08 => self.push_stack(self.status.bits),
+                0x08 => self.php(),
                 0x68 => self.pla(),
-                0x28 => self.status.bits = self.pull_stack(),
+                0x28 => self.plp(),
+                0x27 | 0x37 | 0x2F | 0x3F | 0x3B | 0x23 | 0x33 => self.rla(&opcode.mode),
+                0x67 | 0x77 | 0x6F | 0x7F | 0x7B | 0x63 | 0x73 => self.rra(&opcode.mode),
                 0x2A => self.rol_acc(),
                 0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
                 0x6A => self.ror_acc(),
                 0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
                 0x40 => self.rti(),
                 0x60 => self.rts(),
-                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
+                0xEB | 0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
                 0x38 => self.status.insert(CPUFlags::CARRY),
                 0xF8 => self.status.insert(CPUFlags::DEC),
                 0x78 => self.status.insert(CPUFlags::INT),
+                0x07 | 0x17 | 0x0F | 0x1F | 0x1B | 0x03 | 0x13 => self.slo(&opcode.mode),
+                0x47 | 0x57 | 0x4F | 0x5F | 0x5B | 0x43 | 0x53 => self.sre(&opcode.mode),
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),
                 0x86 | 0x96 | 0x8E => self.stx(&opcode.mode),
                 0x84 | 0x94 | 0x8C => self.sty(&opcode.mode),
+                0x9E => self.sxa(),
+                0x9C => self.sya(),
                 0xAA => self.set_reg_x(self.accumulator),
                 0xA8 => self.set_reg_y(self.accumulator),
+                0x0C | 0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC => {},
                 0xBA => self.set_reg_x(self.stack_ptr),
                 0x8A => self.set_acc(self.register_x),
                 0x9A => self.set_stack_ptr(self.register_x),
                 0x98 => self.set_acc(self.register_y),
-                _ => todo!(""),
+                0x8B => self.xaa(),
+                0x9B => self.xas(),
             }
 
             if program_counter_state == self.program_counter {
@@ -607,10 +840,17 @@ impl CPU {
 
             // Run corresponding operation function
             match code {
+                0x0B | 0x2B => self.aac(),
+                0x87 | 0x97 | 0x83 | 0x8F => self.aax(&opcode.mode),
                 0x69 | 0x65 | 0x75 | 0x6D | 0x7D | 0x79 | 0x61 | 0x71 => self.adc(&opcode.mode),
                 0x29 | 0x25 | 0x35 | 0x2D | 0x3D | 0x39 | 0x21 | 0x31 => self.and(&opcode.mode),
+                0x6B => self.arr(),
                 0x0A => self.asl_acc(),
                 0x06 | 0x16 | 0x0E | 0x1E => self.asl(&opcode.mode),
+                0x4B => self.asr(),
+                0xAB => self.atx(),
+                0x9F | 0x93 => self.axa(&opcode.mode),
+                0xCB => self.axs(),
                 0x90 => self.branch(!self.status.contains(CPUFlags::CARRY)),
                 0xB0 => self.branch(self.status.contains(CPUFlags::CARRY)),
                 0xF0 => self.branch(self.status.contains(CPUFlags::ZERO)),
@@ -631,46 +871,60 @@ impl CPU {
                 0xC9 | 0xC5 | 0xD5 | 0xCD | 0xDD | 0xD9 | 0xC1 | 0xD1 => self.cmp(&opcode.mode, self.accumulator),
                 0xE0 | 0xE4 | 0xEC => self.cmp(&opcode.mode, self.register_x),
                 0xC0 | 0xC4 | 0xCC => self.cmp(&opcode.mode, self.register_y),
+                0xC7 | 0xD7 | 0xCF | 0xDF | 0xDB | 0xC3 | 0xD3 => self.dcp(&opcode.mode),
                 0xC6 | 0xD6 | 0xCE | 0xDE => self.dec(&opcode.mode),
                 0xCA => self.dex(),
                 0x88 => self.dey(),
+                0x04 | 0x14 | 0x34 | 0x44 | 0x54 | 0x64 | 0x74 | 0x80 | 0x82 | 0x89 | 0xC2 | 0xD4 | 0xE2 | 0xF4 => {},
+                0xE7 | 0xF7 | 0xEF | 0xFF | 0xFB | 0xE3 | 0xF3 => self.isc(&opcode.mode),
                 0x49 | 0x45 | 0x55 | 0x4D | 0x5D | 0x59 | 0x41 | 0x51 => self.eor(&opcode.mode),
                 0xE6 | 0xF6 | 0xEE | 0xFE => self.inc(&opcode.mode),
                 0xE8 => self.inx(),
                 0xC8 => self.iny(),
                 0x4C | 0x6c => self.jmp(&opcode.mode),
                 0x20 => self.jsr(),
+                0x02 | 0x12 | 0x22 | 0x32 | 0x42 | 0x52 | 0x62 | 0x72 | 0x92 | 0xB2 | 0xD2 | 0xF2 => return,
+                0xBB => self.lar(),
+                0xA7 | 0xB7 | 0xAF | 0xBF | 0xA3 | 0xB3 => self.lax(&opcode.mode),
                 0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(&opcode.mode),
                 0xA2 | 0xA6 | 0xB6 | 0xAE | 0xBE => self.ldx(&opcode.mode),
                 0xA0 | 0xA4 | 0xB4 | 0xAC | 0xBC => self.ldy(&opcode.mode),
                 0x4A => self.lsr_acc(),
                 0x46 | 0x56 | 0x4E | 0x5E => self.lsr(&opcode.mode),
-                0xEA => {},
+                0xEA | 0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => {},
                 0x09 | 0x05 | 0x15 | 0x0D | 0x1D | 0x19 | 0x01 | 0x11 => self.ora(&opcode.mode),
                 0x48 => self.push_stack(self.accumulator),
-                0x08 => self.push_stack(self.status.bits),
+                0x08 => self.php(),
                 0x68 => self.pla(),
-                0x28 => self.status.bits = self.pull_stack(),
+                0x28 => self.plp(),
+                0x27 | 0x37 | 0x2F | 0x3F | 0x3B | 0x23 | 0x33 => self.rla(&opcode.mode),
+                0x67 | 0x77 | 0x6F | 0x7F | 0x7B | 0x63 | 0x73 => self.rra(&opcode.mode),
                 0x2A => self.rol_acc(),
                 0x26 | 0x36 | 0x2E | 0x3E => self.rol(&opcode.mode),
                 0x6A => self.ror_acc(),
                 0x66 | 0x76 | 0x6E | 0x7E => self.ror(&opcode.mode),
                 0x40 => self.rti(),
                 0x60 => self.rts(),
-                0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
+                0xEB | 0xE9 | 0xE5 | 0xF5 | 0xED | 0xFD | 0xF9 | 0xE1 | 0xF1 => self.sbc(&opcode.mode),
                 0x38 => self.status.insert(CPUFlags::CARRY),
                 0xF8 => self.status.insert(CPUFlags::DEC),
                 0x78 => self.status.insert(CPUFlags::INT),
+                0x07 | 0x17 | 0x0F | 0x1F | 0x1B | 0x03 | 0x13 => self.slo(&opcode.mode),
+                0x47 | 0x57 | 0x4F | 0x5F | 0x5B | 0x43 | 0x53 => self.sre(&opcode.mode),
                 0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(&opcode.mode),
                 0x86 | 0x96 | 0x8E => self.stx(&opcode.mode),
                 0x84 | 0x94 | 0x8C => self.sty(&opcode.mode),
+                0x9E => self.sxa(),
+                0x9C => self.sya(),
                 0xAA => self.set_reg_x(self.accumulator),
                 0xA8 => self.set_reg_y(self.accumulator),
+                0x0C | 0x1C | 0x3C | 0x5C | 0x7C | 0xDC | 0xFC => {},
                 0xBA => self.set_reg_x(self.stack_ptr),
                 0x8A => self.set_acc(self.register_x),
                 0x9A => self.set_stack_ptr(self.register_x),
                 0x98 => self.set_acc(self.register_y),
-                _ => todo!(""),
+                0x8B => self.xaa(),
+                0x9B => self.xas(),
             }
 
             if program_counter_state == self.program_counter {
