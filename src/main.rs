@@ -2,6 +2,7 @@ pub mod bus;
 pub mod rom;
 pub mod mem;
 pub mod cpu;
+pub mod ppu;
 pub mod opcodes;
 pub mod trace;
 
@@ -9,6 +10,7 @@ use bus::Bus;
 use rom::Rom;
 use mem::Mem;
 use cpu::CPU;
+use ppu::PPU;
 use trace::trace;
 use rand::Rng;
 
@@ -25,7 +27,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate bitflags;
 
-const TESTING: bool = false;
+const TESTING: bool = true;
 
 fn color(byte: u8) -> Color {
     match byte {
@@ -115,35 +117,34 @@ fn main() {
         .unwrap();
 
     //load the game
-    let bytes: Vec<u8> = std::fs::read("snake.nes").unwrap();
+    let bytes: Vec<u8> = std::fs::read("nestest.nes").unwrap();
     let rom = Rom::new(&bytes).unwrap();
 
     let bus = Bus::new(rom);
     let mut cpu = CPU::new(bus);
     cpu.reset();
+    cpu.program_counter = 0xC000;
 
-    let mut screen_state = [0 as u8; 32 * 3 * 32];
-    let mut rng = rand::thread_rng();
+    //let mut screen_state = [0 as u8; 32 * 3 * 32];
+    //let mut rng = rand::thread_rng();
 
     // run the game cycle
-    cpu.run_with_callback(move |cpu| {
-        if TESTING {
-            println!("{}", trace(cpu));
+    cpu.run_with_callback(move |cpu: &mut CPU| {
+        println!("{}", trace(cpu));
+        /*
+        handle_user_input(cpu, &mut event_pump);
+
+        cpu.mem_write(0xfe, rng.gen_range(1, 16));
+
+        if read_screen_state(cpu, &mut screen_state) {
+            texture.update(None, &screen_state, 32 * 3).unwrap();
+
+            canvas.copy(&texture, None, None).unwrap();
+
+            canvas.present();
         }
-        else {
-            handle_user_input(cpu, &mut event_pump);
 
-            cpu.mem_write(0xfe, rng.gen_range(1, 16));
-
-            if read_screen_state(cpu, &mut screen_state) {
-                texture.update(None, &screen_state, 32 * 3).unwrap();
-
-                canvas.copy(&texture, None, None).unwrap();
-
-                canvas.present();
-            }
-
-            ::std::thread::sleep(Duration::new(0, 100_000));
-        }
+        ::std::thread::sleep(Duration::new(0, 100_000));
+        */
     });
 }
